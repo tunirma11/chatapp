@@ -15,6 +15,7 @@
   --ease-out-expo: cubic-bezier(0.22, 1, 0.36, 1);
   --shadow-soft: 0 1px 2px rgba(11, 20, 26, 0.08), 0 4px 12px rgba(11, 20, 26, 0.06);
   --shadow-bubble: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+  --chat-gutter: 0.75rem;
 }
 
 * { box-sizing: border-box; }
@@ -246,10 +247,10 @@ html, body {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 1rem 1rem 0.5rem;
+  padding: 1rem var(--chat-gutter) 0.5rem;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   height: 100%;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
@@ -341,50 +342,36 @@ html, body {
   }
 }
 
-.msg-row.own { justify-content: flex-end; }
-.msg-row.other { justify-content: flex-start; }
+.msg-row.own { justify-content: stretch; }
+.msg-row.other { justify-content: stretch; }
 
 .msg-bubble {
   position: relative;
-  width: fit-content;
-  max-width: min(85%, 480px);
-  padding: 0.45rem 0.65rem 0.35rem 0.75rem;
-  border-radius: 8px;
+  width: 100%;
+  max-width: 100%;
+  padding: 0.55rem 0.85rem 0.45rem;
+  border-radius: 12px;
   font-size: 0.9375rem;
   line-height: 1.45;
   word-wrap: break-word;
   box-shadow: var(--shadow-bubble);
-  transition: min-width 0.2s var(--ease-out-expo), transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .msg-row.own .msg-bubble {
   background: var(--bubble-own);
   color: var(--bubble-own-text);
-  border-top-right-radius: 2px;
+  border-top-right-radius: 4px;
 }
 
 .msg-row.other .msg-bubble {
   background: var(--bubble-other);
   color: var(--bubble-other-text);
-  border-top-left-radius: 2px;
+  border-top-left-radius: 4px;
 }
 
 .msg-bubble::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  width: 12px;
-  height: 12px;
-}
-
-.msg-row.own .msg-bubble::after {
-  right: -6px;
-  background: radial-gradient(circle at 100% 0%, transparent 12px, var(--bubble-own) 12px);
-}
-
-.msg-row.other .msg-bubble::after {
-  left: -6px;
-  background: radial-gradient(circle at 0% 0%, transparent 12px, var(--bubble-other) 12px);
+  display: none;
 }
 
 .msg-bubble.pending {
@@ -412,7 +399,8 @@ html, body {
 
 .msg-text {
   flex: 1 1 auto;
-  min-width: min(100%, 12rem);
+  min-width: 0;
+  width: 100%;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -496,7 +484,7 @@ html, body {
 /* Composer */
 .composer {
   flex-shrink: 0;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem var(--chat-gutter);
   padding-bottom: calc(0.5rem + var(--safe-bottom));
   background: #f0f2f5;
   border-top: 1px solid rgba(11, 20, 26, 0.06);

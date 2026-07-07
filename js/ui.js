@@ -211,28 +211,7 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
     btn.addEventListener("click", () => onRetry?.(btn.dataset.localId));
   });
 
-  syncBubbleWidths(container);
   scrollToBottom();
-}
-
-function syncBubbleWidths(container) {
-  const bubbles = [...container.querySelectorAll(".msg-row .msg-bubble")];
-  if (bubbles.length < 2) return;
-
-  requestAnimationFrame(() => {
-    bubbles.forEach((bubble) => {
-      bubble.style.minWidth = "";
-    });
-
-    bubbles.forEach((bubble, index) => {
-      if (index === 0) return;
-      const prevWidth = Math.ceil(bubbles[index - 1].getBoundingClientRect().width);
-      const curWidth = Math.ceil(bubble.getBoundingClientRect().width);
-      if (prevWidth > curWidth) {
-        bubble.style.minWidth = `${prevWidth}px`;
-      }
-    });
-  });
 }
 
 export function scrollToBottom(smooth = true) {
