@@ -81,30 +81,58 @@ export function showView(viewName) {
     chat: "chatView",
   };
   Object.entries(views).forEach(([key, id]) => {
-    document.getElementById(id)?.classList.toggle("d-none", key !== viewName);
+    const el = document.getElementById(id);
+    if (!el) return;
+    const active = key === viewName;
+    el.classList.toggle("d-none", !active);
+    if (key === "chat") {
+      el.classList.toggle("view-active", active);
+    }
   });
 }
 
 export function updatePartnerHeader(partner, isOnline) {
   if (!partner) return;
   document.getElementById("partnerName").textContent = partner.name;
-  document.getElementById("partnerStatus").textContent = isOnline ? "অনলাইন" : "অফলাইন";
+  const statusEl = document.getElementById("partnerStatus");
+  if (statusEl) {
+    statusEl.textContent = isOnline ? "অনলাইন" : "অফলাইন";
+    statusEl.classList.toggle("is-online", isOnline);
+  }
   const avatar = document.getElementById("partnerAvatar");
-  avatar.className = `avatar ${getAvatarColorClass(partner.id)}`;
+  avatar.className = `avatar avatar-lg ${getAvatarColorClass(partner.id)}`;
   avatar.innerHTML = `${getInitial(partner.name)}${isOnline ? '<span class="online-dot"></span>' : ""}`;
 }
 
 export function showWaitingForPartner() {
-  document.getElementById("waitingPartner")?.classList.remove("d-none");
-  document.getElementById("chatBody")?.classList.add("d-none");
+  const waiting = document.getElementById("waitingPartner");
+  const body = document.getElementById("chatBody");
+  waiting?.classList.remove("d-none");
+  body?.classList.add("d-none");
   document.getElementById("partnerName").textContent = "সঙ্গীর অপেক্ষায়";
-  document.getElementById("partnerStatus").textContent = "অপেক্ষায়";
+  const statusEl = document.getElementById("partnerStatus");
+  if (statusEl) {
+    statusEl.textContent = "অপেক্ষায়";
+    statusEl.classList.remove("is-online");
+  }
 }
 
 export function showChatReady(partner, isOnline) {
   document.getElementById("waitingPartner")?.classList.add("d-none");
-  document.getElementById("chatBody")?.classList.remove("d-none");
+  const body = document.getElementById("chatBody");
+  body?.classList.remove("d-none");
+  body?.classList.add("chat-body-visible");
   updatePartnerHeader(partner, isOnline);
+}
+
+function renderStatusIcon(status) {
+  if (status === "sending" || status === "pending") {
+    return '<span class="msg-status pending" aria-label="পাঠানো হচ্ছে">🕐</span>';
+  }
+  if (status === "failed") {
+    return '<span class="msg-status failed" aria-label="ব্যর্থ">!</span>';
+  }
+  return '<span class="msg-status sent" aria-label="পাঠানো হয়েছে">✓✓</span>';
 }
 
 export function isOwnMessage(msg, username, uid) {
@@ -129,14 +157,16 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
 
   if (all.length === 0) {
     container.innerHTML = `
-      <div class="text-center text-muted py-5">
-        <p class="mb-0">এখনো কোনো মেসেজ নেই। প্রথম মেসেজ পাঠান!</p>
+      <div class="chat-empty">
+        <div class="chat-empty-icon">💬</div>
+        <p>মেসেজ পাঠিয়ে কথোপকথন শুরু করুন</p>
       </div>`;
     return;
   }
 
   let html = "";
   let lastDate = "";
+  let animIndex = 0;
 
   all.forEach((msg) => {
     const ts = msg.createdAt?.toMillis?.() ?? msg.createdAt ?? Date.now();
@@ -148,16 +178,12 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
 
     const isOwn = isOwnMessage(msg, currentUsername, currentUid);
     const rowClass = isOwn ? "own" : "other";
-    const pendingClass = msg.status === "pending" ? "pending" : "";
+    const pendingClass = msg.status === "pending" || msg.status === "sending" ? "pending" : "";
     const failedClass = msg.status === "failed" ? "failed" : "";
+    const delay = Math.min(animIndex * 0.025, 0.35);
+    animIndex += 1;
 
-    let statusIcon = "";
-    if (isOwn) {
-      if (msg.status === "sending") statusIcon = "⏳";
-      else if (msg.status === "pending") statusIcon = "🕐";
-      else if (msg.status === "failed") statusIcon = "⚠";
-      else statusIcon = "✓";
-    }
+    const statusHtml = isOwn ? renderStatusIcon(msg.status) : "";
 
     const retryBtn =
       msg.status === "failed" && msg.localId
@@ -165,12 +191,12 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
         : "";
 
     html += `
-      <div class="msg-row ${rowClass}">
+      <div class="msg-row ${rowClass}" style="animation-delay:${delay}s">
         <div class="msg-bubble ${pendingClass} ${failedClass}">
-          ${escapeHtml(msg.text)}
+          <span class="msg-text">${escapeHtml(msg.text)}</span>
           <div class="msg-meta">
-            <span>${formatTime(ts)}</span>
-            ${statusIcon ? `<span>${statusIcon}</span>` : ""}
+            <span class="msg-time">${formatTime(ts)}</span>
+            ${statusHtml}
             ${retryBtn}
           </div>
         </div>

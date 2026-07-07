@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="description" content="অ্যাডমিন প্যানেল ও পাসওয়ার্ড-সুরক্ষিত প্রাইভেট চ্যাট রুম।">
-  <meta name="theme-color" content="#128C7E">
+  <meta name="theme-color" content="#075e54">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <link rel="canonical" href="https://tunirma11.github.io/chatapp/">
@@ -153,42 +153,51 @@
 
   <!-- Chat View -->
   <div id="chatView" class="view chat-view d-none">
-    <div class="chat-single" id="chatLayout">
-      <header class="chat-topbar">
-        <div class="avatar" id="partnerAvatar">?</div>
-        <div class="flex-grow-1 min-w-0">
-          <div class="fw-semibold text-truncate" id="partnerName">—</div>
-          <div class="text-muted small" id="partnerStatus">—</div>
+    <div class="chat-shell" id="chatLayout">
+      <header class="chat-header">
+        <div class="chat-header-main">
+          <div class="avatar avatar-lg" id="partnerAvatar">?</div>
+          <div class="chat-header-info min-w-0">
+            <div class="chat-header-name text-truncate" id="partnerName">—</div>
+            <div class="chat-header-status" id="partnerStatus">—</div>
+          </div>
         </div>
-        <button class="btn btn-link btn-sm text-muted p-1" id="soundToggleBtn" title="সাউন্ড বন্ধ করুন" aria-label="সাউন্ড টগল">
-          <svg id="soundOnIcon" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06z"/></svg>
-          <svg id="soundOffIcon" class="d-none" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06zm10.137 7.763-1.414-1.414L2.707 1.293 1.293 2.707l3.525 3.525A.5.5 0 0 0 5 6.5V10a.5.5 0 0 0 .5.5h2.325l2.363 1.89a.5.5 0 0 0 .812-.39V9.707l2.025 2.025a4.486 4.486 0 0 0 .707-.707 3.49 3.49 0 0 0 1.025-2.475 3.489 3.489 0 0 0-1.025-2.475l.707-.707a4.486 4.486 0 0 1 1.318 3.182 4.486 4.486 0 0 1-1.318 3.182z"/></svg>
-        </button>
-        <button class="btn btn-link btn-sm text-muted p-1" id="logoutBtn" title="লগআউট" aria-label="লগআউট">
-          <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/><path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/></svg>
-        </button>
+        <div class="chat-header-actions">
+          <button class="chat-icon-btn" id="soundToggleBtn" title="সাউন্ড বন্ধ করুন" aria-label="সাউন্ড টগল">
+            <svg id="soundOnIcon" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06z"/></svg>
+            <svg id="soundOffIcon" class="d-none" width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M6.717 3.55A.5.5 0 0 1 7 4v8a.5.5 0 0 1-.812.39L3.825 10.5H1.5A.5.5 0 0 1 1 10V6a.5.5 0 0 1 .5-.5h2.325l2.363-1.89a.5.5 0 0 1 .529-.06zm10.137 7.763-1.414-1.414L2.707 1.293 1.293 2.707l3.525 3.525A.5.5 0 0 0 5 6.5V10a.5.5 0 0 0 .5.5h2.325l2.363 1.89a.5.5 0 0 0 .812-.39V9.707l2.025 2.025a4.486 4.486 0 0 0 .707-.707 3.49 3.49 0 0 0 1.025-2.475 3.489 3.489 0 0 0-1.025-2.475l.707-.707a4.486 4.486 0 0 1 1.318 3.182 4.486 4.486 0 0 1-1.318 3.182z"/></svg>
+          </button>
+          <button class="chat-icon-btn" id="logoutBtn" title="লগআউট" aria-label="লগআউট">
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path fill-rule="evenodd" d="M10 12.5a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-9a.5.5 0 0 1 .5-.5h8a.5.5 0 0 1 .5.5v2a.5.5 0 0 0 1 0v-2A1.5 1.5 0 0 0 9.5 2h-8A1.5 1.5 0 0 0 0 3.5v9A1.5 1.5 0 0 0 1.5 14h8a1.5 1.5 0 0 0 1.5-1.5v-2a.5.5 0 0 0-1 0v2z"/><path fill-rule="evenodd" d="M15.854 8.354a.5.5 0 0 0 0-.708l-3-3a.5.5 0 0 0-.708.708L14.293 7.5H5.5a.5.5 0 0 0 0 1h8.793l-2.147 2.146a.5.5 0 0 0 .708.708l3-3z"/></svg>
+          </button>
+        </div>
       </header>
 
       <div class="waiting-partner d-none" id="waitingPartner">
-        <div class="text-center p-5">
-          <div class="waiting-icon mb-3">⏳</div>
-          <h2 class="h5">সঙ্গীর অপেক্ষায়...</h2>
-          <p class="text-muted small mb-0">সঙ্গী রুম পাসওয়ার্ড দিয়ে ঢুকলে চ্যাট শুরু হবে।</p>
+        <div class="waiting-card">
+          <div class="waiting-pulse" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
+          <h2 class="h5 mb-2">সঙ্গীর অপেক্ষায়</h2>
+          <p class="text-muted small mb-0">সঙ্গী রুমে ঢুকলে চ্যাট স্বয়ংক্রিয়ভাবে শুরু হবে</p>
         </div>
       </div>
 
       <div class="chat-body d-none" id="chatBody">
-        <div class="messages" id="messages">
-          <div class="skeleton-messages" id="messagesSkeleton">
-            <div class="skeleton-bubble left"></div>
-            <div class="skeleton-bubble right"></div>
+        <div class="messages-panel">
+          <div class="messages" id="messages">
+            <div class="skeleton-messages" id="messagesSkeleton">
+              <div class="skeleton-bubble left"></div>
+              <div class="skeleton-bubble right"></div>
+              <div class="skeleton-bubble left"></div>
+            </div>
           </div>
         </div>
-        <footer class="chat-input-area">
-          <div class="input-group">
-            <textarea class="form-control chat-input" id="messageInput" rows="1" placeholder="মেসেজ লিখুন..." maxlength="1000"></textarea>
-            <button class="btn btn-primary send-btn" id="sendBtn" aria-label="পাঠান" disabled>
-              <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16"><path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-10Zm-1.833 1.89L6.637 10.07l-.201-.16a.5.5 0 0 0-.707 0l-1.958 1.957a.5.5 0 0 0 0 .707l.707.707a.5.5 0 0 0 .707 0l1.958-1.958a.5.5 0 0 0 0-.707l-.16-.201 7.636-7.495-1.1-.921z"/></svg>
+        <footer class="composer">
+          <div class="composer-inner">
+            <textarea class="composer-input" id="messageInput" rows="1" placeholder="মেসেজ লিখুন..." maxlength="1000"></textarea>
+            <button class="composer-send" id="sendBtn" aria-label="পাঠান" disabled>
+              <svg width="22" height="22" fill="currentColor" viewBox="0 0 16 16"><path d="M15.854.146a.5.5 0 0 1 .11.54l-5.5 11a.5.5 0 0 1-.908-.04L8.5 9.5 4.544 7.794a.5.5 0 0 1-.04-.908l11-5.5a.5.5 0 0 1 .35.76z"/></svg>
             </button>
           </div>
         </footer>
