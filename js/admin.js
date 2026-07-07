@@ -11,8 +11,8 @@ export async function verifyAdminPassword(password) {
   if (!snap.exists()) {
     throw new Error("অ্যাডমিন কনফিগার করা হয়নি। Firebase Console-এ config/admin সেট করুন।");
   }
-  const storedHash = snap.data().passwordHash;
-  const inputHash = await sha256Hex(password);
+  const storedHash = String(snap.data().passwordHash || "").trim();
+  const inputHash = await sha256Hex(String(password).trim());
   if (inputHash !== storedHash) {
     throw new Error("ভুল পাসওয়ার্ড");
   }

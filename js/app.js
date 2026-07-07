@@ -107,14 +107,19 @@ let currentMessages = [];
 let adminRooms = [];
 
 async function init() {
-  registerServiceWorker();
-  initInstallPrompt();
-  bindSoundUnlock();
-  await loadSoundPreference();
-  updateSoundToggleUI();
-  initOfflineSync();
-  onConnectionStatusChange(handleConnectionChange);
-  await enableOfflinePersistence();
+  try {
+    registerServiceWorker();
+    initInstallPrompt();
+    bindSoundUnlock();
+    await loadSoundPreference();
+    updateSoundToggleUI();
+    initOfflineSync();
+    onConnectionStatusChange(handleConnectionChange);
+    await enableOfflinePersistence();
+  } catch (err) {
+    console.error("App init failed:", err);
+    showToast("অ্যাপ লোড করা যায়নি — পেজ রিফ্রেশ করুন");
+  }
 
   document.getElementById("adminLoginForm")?.addEventListener("submit", handleAdminLogin);
   document.getElementById("adminLogoutBtn")?.addEventListener("click", handleAdminLogout);
@@ -244,7 +249,9 @@ async function handleAdminLogin(e) {
     await loginAdmin(password);
     playLogin();
     navigateToAdmin();
+    await bootstrapAdmin();
   } catch (err) {
+    console.error("Admin login failed:", err);
     playError();
     showToast(formatFirebaseError(err));
   } finally {

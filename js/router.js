@@ -1,6 +1,10 @@
 import { ROOM_ID_PATTERN } from "./constants.js";
 
-const ADMIN_HASH = "#/admin";
+const ADMIN_HASHES = ["#/admin", "#admin"];
+
+function isAdminRoute(hash) {
+  return ADMIN_HASHES.some((h) => hash === h || hash.startsWith(`${h}/`));
+}
 
 function extractRoomId(hash) {
   const patterns = [/^#\/room\/([a-z0-9]+)/i, /^#room\/([a-z0-9]+)/i];
@@ -13,7 +17,7 @@ function extractRoomId(hash) {
 
 export function parseRoute() {
   const hash = window.location.hash || "";
-  if (hash === ADMIN_HASH || hash.startsWith(`${ADMIN_HASH}/`)) {
+  if (isAdminRoute(hash)) {
     return { view: "admin" };
   }
   const roomId = extractRoomId(hash);
@@ -26,11 +30,11 @@ export function getRoomIdFromHash() {
 }
 
 export function navigateToRoom(roomId) {
-  window.location.hash = `room/${roomId}`;
+  window.location.hash = `/room/${roomId}`;
 }
 
 export function navigateToAdmin() {
-  window.location.hash = "admin";
+  window.location.hash = "/admin";
 }
 
 export function navigateToHome() {
