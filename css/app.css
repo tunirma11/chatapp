@@ -699,11 +699,37 @@ html, body {
 
 .admin-member-row {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0.75rem 0;
   border-bottom: 1px solid #f1f3f5;
+}
+
+.admin-member-info {
+  min-width: 0;
+}
+
+.admin-member-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.admin-member-password-form .input-group {
+  width: 100%;
+}
+
+@media (min-width: 480px) {
+  .admin-member-row {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+
+  .admin-member-actions {
+    flex: 1;
+    max-width: 280px;
+  }
 }
 
 .admin-member-row:last-child {

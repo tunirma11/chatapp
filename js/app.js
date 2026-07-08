@@ -7,6 +7,7 @@ import {
   clearMembersCache,
   adminAddMember,
   deleteMember,
+  updateMemberPassword,
 } from "./users.js";
 import {
   enterChatAsMember,
@@ -21,8 +22,8 @@ import {
 } from "./auth.js";
 import { loginAdmin, logoutAdmin, isAdminLoggedIn, touchAdminSession } from "./admin.js";
 import {
-  verifyRoomPassword,
-  isRoomPasswordVerified,
+  verifyMemberPassword,
+  isMemberPasswordVerified,
   resolveRoomMember,
   getRoomMemberUsernames,
 } from "./room-gate.js";
@@ -30,12 +31,11 @@ import {
   createRoom,
   getRoom,
   listRooms,
-  updateRoomPassword,
   setRoomStatus,
   isRoomFull,
 } from "./rooms.js";
 import { onRouteChange, navigateToAdmin, navigateToHome } from "./router.js";
-import { isInstallDismissed, dismissInstallPrompt, getPendingMessages, touchDeviceSession, getDeviceSession } from "./store.js";
+import { isInstallDismissed, dismissInstallPrompt, getPendingMessages, touchDeviceSession, getDeviceSession, clearRoomSession } from "./store.js";
 import {
   enableOfflinePersistence,
   sendMessage,
@@ -128,11 +128,11 @@ async function init() {
   document.getElementById("adminLoginForm")?.addEventListener("submit", handleAdminLogin);
   document.getElementById("adminLogoutBtn")?.addEventListener("click", handleAdminLogout);
   document.getElementById("adminCreateRoomForm")?.addEventListener("submit", handleAdminCreateRoom);
-  document.getElementById("adminChangePasswordForm")?.addEventListener("submit", handleAdminChangePassword);
   document.getElementById("adminAddMemberForm")?.addEventListener("submit", handleAdminAddMember);
   document.getElementById("adminCopyLinkBtn")?.addEventListener("click", handleAdminCopyLink);
   document.getElementById("adminToggleRoomBtn")?.addEventListener("click", handleAdminToggleRoom);
-  document.getElementById("adminMemberList")?.addEventListener("click", handleAdminDeleteMemberClick);
+  document.getElementById("adminMemberList")?.addEventListener("click", handleAdminMemberListClick);
+  document.getElementById("adminMemberList")?.addEventListener("submit", handleAdminMemberPasswordSubmit);
   document.getElementById("roomGateForm")?.addEventListener("submit", handleRoomGate);
   document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("soundToggleBtn")?.addEventListener("click", handleSoundToggle);
@@ -226,7 +226,10 @@ async function bootstrapRoomGate(roomId) {
 
   showView("gate");
   const deviceSession = await getDeviceSession();
-  const verified = await isRoomPasswordVerified(roomId);
+  const quickUsername = deviceSession?.username || "";
+  const verified = quickUsername
+    ? await isMemberPasswordVerified(roomId, quickUsername)
+    : false;
   const quick = (await canQuickReenter(roomId)) && verified;
 
   try {
@@ -287,12 +290,7 @@ async function handleAdminLogout() {
 async function handleAdminCreateRoom(e) {
   e.preventDefault();
   const label = document.getElementById("newRoomLabel")?.value || "";
-  const password = document.getElementById("newRoomPassword")?.value || "";
   const roomCode = document.getElementById("newRoomCode")?.value || "";
-  if (!password) {
-    showToast("রুম পাসওয়ার্ড দিন");
-    return;
-  }
   if (!roomCode.trim()) {
     showToast("রুম কোড দিন");
     return;
@@ -301,9 +299,8 @@ async function handleAdminCreateRoom(e) {
   setAdminCreateLoading(true);
   try {
     await ensureAnonymousAuth();
-    const roomId = await createRoom(label, password, roomCode);
+    const roomId = await createRoom(label, roomCode);
     document.getElementById("newRoomLabel").value = "";
-    document.getElementById("newRoomPassword").value = "";
     document.getElementById("newRoomCode").value = "";
     await refreshAdminRooms();
     setSelectedAdminRoomId(roomId);
@@ -318,26 +315,12 @@ async function handleAdminCreateRoom(e) {
   }
 }
 
-async function handleAdminChangePassword(e) {
-  e.preventDefault();
-  const roomId = getSelectedAdminRoomId();
-  const password = document.getElementById("adminNewRoomPassword")?.value || "";
-  if (!roomId || !password) return;
-
-  try {
-    await updateRoomPassword(roomId, password);
-    document.getElementById("adminNewRoomPassword").value = "";
-    showToast("পাসওয়ার্ড আপডেট হয়েছে", "success");
-  } catch (err) {
-    showToast(formatFirebaseError(err));
-  }
-}
-
 async function handleAdminAddMember(e) {
   e.preventDefault();
   const roomId = getSelectedAdminRoomId();
   const rawId = document.getElementById("adminMemberId")?.value || "";
   const name = document.getElementById("adminMemberName")?.value || "";
+  const password = document.getElementById("adminMemberPassword")?.value || "";
   if (!roomId) return;
 
   const room = await getRoom(roomId);
@@ -348,9 +331,10 @@ async function handleAdminAddMember(e) {
 
   try {
     await ensureAnonymousAuth();
-    await adminAddMember(roomId, rawId, name);
+    await adminAddMember(roomId, rawId, name, password);
     document.getElementById("adminMemberId").value = "";
     document.getElementById("adminMemberName").value = "";
+    document.getElementById("adminMemberPassword").value = "";
     await refreshAdminRooms();
     await loadAdminRoomDetail(roomId);
     showToast("সদস্য যোগ হয়েছে", "success");
@@ -359,7 +343,7 @@ async function handleAdminAddMember(e) {
   }
 }
 
-async function handleAdminDeleteMemberClick(e) {
+async function handleAdminMemberListClick(e) {
   const btn = e.target.closest(".admin-delete-member");
   if (!btn) return;
   const roomId = getSelectedAdminRoomId();
@@ -371,6 +355,26 @@ async function handleAdminDeleteMemberClick(e) {
     await refreshAdminRooms();
     await loadAdminRoomDetail(roomId);
     showToast("সদস্য মুছে ফেলা হয়েছে", "success");
+  } catch (err) {
+    showToast(formatFirebaseError(err));
+  }
+}
+
+async function handleAdminMemberPasswordSubmit(e) {
+  const form = e.target.closest(".admin-member-password-form");
+  if (!form) return;
+  e.preventDefault();
+
+  const roomId = getSelectedAdminRoomId();
+  const username = form.dataset.username;
+  const input = form.querySelector('input[type="password"]');
+  const password = input?.value || "";
+  if (!roomId || !username || !password) return;
+
+  try {
+    await updateMemberPassword(roomId, username, password);
+    if (input) input.value = "";
+    showToast(`${username} এর পাসওয়ার্ড আপডেট হয়েছে`, "success");
   } catch (err) {
     showToast(formatFirebaseError(err));
   }
@@ -424,14 +428,15 @@ async function startChatFromGate(password, rawUsername, skipPasswordCheck) {
   try {
     await ensureAnonymousAuth();
 
+    const resolvedUsername = await resolveRoomMember(currentRoomId, username);
+
     if (!skipPasswordCheck) {
-      if (!password) throw new Error("রুম পাসওয়ার্ড দিন");
-      await verifyRoomPassword(currentRoomId, password);
-    } else if (!(await isRoomPasswordVerified(currentRoomId))) {
+      if (!password) throw new Error("পাসওয়ার্ড দিন");
+      await verifyMemberPassword(currentRoomId, resolvedUsername, password);
+    } else if (!(await isMemberPasswordVerified(currentRoomId, resolvedUsername))) {
       throw new Error("আবার পাসওয়ার্ড দিন");
     }
 
-    const resolvedUsername = await resolveRoomMember(currentRoomId, username);
     const user = await enterChatAsMember(currentRoomId, resolvedUsername);
     enterChat(user);
     playLogin();
@@ -468,6 +473,7 @@ function exitChat() {
 async function handleLogout() {
   playLogout();
   await logout();
+  await clearRoomSession();
   exitChat();
   showToast("লগআউট হয়েছে", "success");
 }

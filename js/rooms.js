@@ -11,9 +11,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { db } from "./firebase.js";
 import { MAX_MEMBERS_PER_ROOM, normalizeRoomCode, validateRoomCode } from "./constants.js";
-import { sha256Hex } from "./crypto-utils.js";
 
-export async function createRoom(label, password, rawRoomCode) {
+export async function createRoom(label, rawRoomCode) {
   const roomId = normalizeRoomCode(rawRoomCode);
   const codeError = validateRoomCode(roomId);
   if (codeError) throw new Error(codeError);
@@ -23,11 +22,9 @@ export async function createRoom(label, password, rawRoomCode) {
     throw new Error("এই রুম কোড ইতিমধ্যে আছে — অন্য কোড ব্যবহার করুন");
   }
 
-  const passwordHash = await sha256Hex(password);
   await setDoc(doc(db, "rooms", roomId), {
     label: String(label || "").trim() || roomId,
     code: roomId,
-    passwordHash,
     memberCount: 0,
     maxMembers: MAX_MEMBERS_PER_ROOM,
     status: "active",
@@ -52,14 +49,6 @@ export async function listRooms() {
     ...d.data(),
     createdAt: d.data().createdAt?.toMillis?.() ?? 0,
   }));
-}
-
-export async function updateRoomPassword(roomId, newPassword) {
-  const passwordHash = await sha256Hex(newPassword);
-  await updateDoc(doc(db, "rooms", roomId), {
-    passwordHash,
-    updatedAt: serverTimestamp(),
-  });
 }
 
 export async function setRoomStatus(roomId, status) {

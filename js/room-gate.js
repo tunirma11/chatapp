@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { collection, doc, getDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { db } from "./firebase.js";
 import { sha256Hex } from "./crypto-utils.js";
 import { ONLINE_THRESHOLD_MS, normalizeUserId, validateUserId } from "./constants.js";
@@ -7,27 +7,39 @@ import { fetchMembersOnce, getMembers } from "./users.js";
 import { getRoomSession, saveRoomSession, getDeviceSession } from "./store.js";
 import { ensureAnonymousAuth, isUserRecentlyActive } from "./auth.js";
 
-export async function verifyRoomPassword(roomId, password) {
+export async function verifyMemberPassword(roomId, username, password) {
   const room = await getRoom(roomId);
   if (!room) throw new Error("রুম পাওয়া যায়নি");
   if (room.status === "disabled") throw new Error("এই রুম নিষ্ক্রিয় করা হয়েছে");
 
-  const storedHash = String(room.passwordHash || "").trim();
+  const memberSnap = await getDoc(doc(db, "rooms", roomId, "members", username));
+  if (!memberSnap.exists()) throw new Error("সদস্য পাওয়া যায়নি");
+
+  const member = memberSnap.data();
+  let storedHash = String(member.passwordHash || "").trim();
+
+  // পুরনো রুম: শেয়ারড রুম পাসওয়ার্ড থাকলে ফলব্যাক
+  if (!storedHash) {
+    storedHash = String(room.passwordHash || "").trim();
+  }
+
   const inputHash = await sha256Hex(String(password).trim());
   if (!storedHash || inputHash !== storedHash) {
-    throw new Error("ভুল রুম পাসওয়ার্ড");
+    throw new Error("ভুল পাসওয়ার্ড");
   }
 
   await saveRoomSession({
     roomId,
+    username,
     passwordVerifiedAt: Date.now(),
   });
-  return room;
+  return member;
 }
 
-export async function isRoomPasswordVerified(roomId) {
+export async function isMemberPasswordVerified(roomId, username) {
   const session = await getRoomSession();
   if (!session?.roomId || session.roomId !== roomId) return false;
+  if (!session?.username || session.username !== username) return false;
   if (!session.passwordVerifiedAt) return false;
   return Date.now() - session.passwordVerifiedAt < 24 * 60 * 60 * 1000;
 }

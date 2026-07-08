@@ -67,11 +67,19 @@ export function renderAdminRoomDetail(room, members) {
     .map(
       (m) => `
       <div class="admin-member-row">
-        <div>
+        <div class="admin-member-info">
           <div class="fw-semibold">${escapeHtml(m.name)}</div>
           <div class="small text-muted">${escapeHtml(m.id)}</div>
         </div>
-        <button type="button" class="btn btn-sm btn-outline-danger admin-delete-member" data-username="${escapeHtml(m.id)}">মুছুন</button>
+        <div class="admin-member-actions">
+          <form class="admin-member-password-form" data-username="${escapeHtml(m.id)}">
+            <div class="input-group input-group-sm">
+              <input type="password" class="form-control" placeholder="নতুন পাসওয়ার্ড" required aria-label="নতুন পাসওয়ার্ড">
+              <button type="submit" class="btn btn-outline-primary">আপডেট</button>
+            </div>
+          </form>
+          <button type="button" class="btn btn-sm btn-outline-danger admin-delete-member" data-username="${escapeHtml(m.id)}">মুছুন</button>
+        </div>
       </div>`
     )
     .join("");

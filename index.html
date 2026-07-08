@@ -77,9 +77,6 @@
               <input type="text" class="form-control" id="newRoomLabel" placeholder="রুমের নাম (যেমন: Ali ও Sara)" required>
             </div>
             <div class="col-12">
-              <input type="password" class="form-control" id="newRoomPassword" placeholder="রুম পাসওয়ার্ড (চ্যাট ইউজার দেবে)" required>
-            </div>
-            <div class="col-12">
               <button type="submit" class="btn btn-primary w-100" id="adminCreateRoomBtn">রুম তৈরি করুন</button>
             </div>
           </form>
@@ -100,14 +97,6 @@
             <button type="button" class="btn btn-outline-secondary btn-sm" id="adminCopyLinkBtn">কপি</button>
           </div>
 
-          <form id="adminChangePasswordForm" class="mb-3">
-            <label class="form-label small text-muted">রুম পাসওয়ার্ড পরিবর্তন</label>
-            <div class="input-group">
-              <input type="password" class="form-control form-control-sm" id="adminNewRoomPassword" placeholder="নতুন পাসওয়ার্ড" required>
-              <button type="submit" class="btn btn-outline-primary btn-sm">আপডেট</button>
-            </div>
-          </form>
-
           <div class="d-flex justify-content-between align-items-center mb-2">
             <h3 class="h6 mb-0">সদস্য</h3>
             <button type="button" class="btn btn-sm btn-outline-danger" id="adminToggleRoomBtn">রুম নিষ্ক্রিয় করুন</button>
@@ -120,6 +109,10 @@
             </div>
             <div class="col-6">
               <input type="text" class="form-control form-control-sm" id="adminMemberName" placeholder="নাম" required>
+            </div>
+            <div class="col-12">
+              <input type="password" class="form-control form-control-sm" id="adminMemberPassword" placeholder="এই সদস্যের পাসওয়ার্ড" required>
+              <div class="form-text">প্রত্যেক সদস্যের আলাদা পাসওয়ার্ড থাকবে</div>
             </div>
             <div class="col-12">
               <button type="submit" class="btn btn-sm btn-outline-primary w-100">সদস্য যোগ করুন</button>
@@ -137,7 +130,7 @@
         <div class="text-center mb-4">
           <div class="app-logo mx-auto mb-3">💬</div>
           <h1 class="h4 mb-1">চ্যাট রুম</h1>
-          <p class="text-muted small mb-0">ইউজারনেম ও রুম পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
+          <p class="text-muted small mb-0">ইউজারনেম ও আপনার পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
         </div>
 
         <div id="roomGateError" class="alert alert-danger small py-2 d-none" role="alert"></div>
@@ -153,8 +146,8 @@
             <div class="form-text" id="roomMemberHint">অ্যাডমিন যে ইউজারনেম দিয়েছেন সেটাই লিখুন</div>
           </div>
           <div class="form-floating mb-4" id="roomPasswordWrap">
-            <input type="password" class="form-control" id="roomPasswordInput" placeholder="রুম পাসওয়ার্ড" autocomplete="current-password" required>
-            <label for="roomPasswordInput">রুম পাসওয়ার্ড</label>
+            <input type="password" class="form-control" id="roomPasswordInput" placeholder="আপনার পাসওয়ার্ড" autocomplete="current-password" required>
+            <label for="roomPasswordInput">আপনার পাসওয়ার্ড</label>
           </div>
           <button type="submit" class="btn btn-primary w-100 btn-lg" id="roomGateBtn">
             <span class="room-gate-btn-text">চ্যাট শুরু করুন</span>

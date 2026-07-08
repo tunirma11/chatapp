@@ -17,6 +17,7 @@ import {
   validateDisplayName,
   normalizeUserId,
 } from "./constants.js";
+import { sha256Hex } from "./crypto-utils.js";
 
 let membersCache = [];
 let activeRoomId = null;
@@ -89,7 +90,7 @@ export function listenToMembers(roomId, callback) {
   );
 }
 
-export async function createMember(roomId, rawId, rawName) {
+export async function createMember(roomId, rawId, rawName, password) {
   const id = normalizeUserId(rawId);
   const idError = validateUserId(id);
   if (idError) throw new Error(idError);
@@ -97,6 +98,11 @@ export async function createMember(roomId, rawId, rawName) {
   const name = String(rawName || "").trim();
   const nameError = validateDisplayName(name);
   if (nameError) throw new Error(nameError);
+
+  const plainPassword = String(password || "").trim();
+  if (!plainPassword) throw new Error("সদস্যের পাসওয়ার্ড দিন");
+
+  const passwordHash = await sha256Hex(plainPassword);
 
   const roomRef = doc(db, "rooms", roomId);
   const newMemberRef = memberDoc(roomId, id);
@@ -120,6 +126,7 @@ export async function createMember(roomId, rawId, rawName) {
     tx.set(newMemberRef, {
       id,
       name,
+      passwordHash,
       joinedAt: serverTimestamp(),
     });
 
@@ -167,6 +174,21 @@ export async function deleteMember(roomId, username) {
   membersCache = membersCache.filter((m) => m.id !== id);
 }
 
-export async function adminAddMember(roomId, rawId, rawName) {
-  return createMember(roomId, rawId, rawName);
+export async function updateMemberPassword(roomId, username, newPassword) {
+  const id = normalizeUserId(username);
+  if (!id) throw new Error("অবৈধ ইউজারনেম");
+
+  const plainPassword = String(newPassword || "").trim();
+  if (!plainPassword) throw new Error("নতুন পাসওয়ার্ড দিন");
+
+  const memberRef = memberDoc(roomId, id);
+  const memberSnap = await getDoc(memberRef);
+  if (!memberSnap.exists()) throw new Error("সদস্য পাওয়া যায়নি");
+
+  const passwordHash = await sha256Hex(plainPassword);
+  await setDoc(memberRef, { passwordHash }, { merge: true });
+}
+
+export async function adminAddMember(roomId, rawId, rawName, password) {
+  return createMember(roomId, rawId, rawName, password);
 }
