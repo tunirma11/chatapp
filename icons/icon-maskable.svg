@@ -10,11 +10,13 @@
   <rect width="512" height="512" fill="url(#bg)"/>
 
   <g transform="translate(256 256) scale(0.72) translate(-256 -256)">
-    <path fill="#ffffff" d="M142 154c0-26.5 21.5-48 48-48h132c26.5 0 48 21.5 48 48v96c0 26.5-21.5 48-48 48h-120l-62 46c-7.2 5.4-17.6.4-17.6-8.7V298c-14.4 0-26-11.6-26-26V154z"/>
-    <circle cx="214" cy="226" r="17" fill="#008069"/>
-    <circle cx="286" cy="226" r="17" fill="#25d366"/>
-    <circle cx="358" cy="226" r="17" fill="#075e54"/>
-    <path fill="#ffffff" fill-opacity="0.92" d="M388 360c18 0 32-14 32-32s-14-32-32-32-32 14-32 32 14 32 32 32z"/>
-    <rect x="378" y="332" width="20" height="28" rx="10" fill="#075e54"/>
+    <rect x="104" y="262" width="40" height="142" rx="14" fill="#ffffff"/>
+    <rect x="368" y="262" width="40" height="142" rx="14" fill="#ffffff"/>
+    <path fill="none" stroke="#ffffff" stroke-width="30" stroke-linecap="round" d="M124 278 Q256 142 388 278"/>
+    <rect x="124" y="266" width="264" height="26" rx="13" fill="#ffffff"/>
+    <circle cx="124" cy="236" r="24" fill="#25d366" stroke="#ffffff" stroke-width="8"/>
+    <circle cx="388" cy="236" r="24" fill="#25d366" stroke="#ffffff" stroke-width="8"/>
+    <circle cx="256" cy="168" r="22" fill="#075e54" stroke="#ffffff" stroke-width="7"/>
+    <rect x="246" y="176" width="20" height="24" rx="10" fill="#075e54" stroke="#ffffff" stroke-width="6"/>
   </g>
 </svg>

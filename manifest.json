@@ -1,8 +1,8 @@
 {
   "id": "./",
-  "name": "GitBridge — ব্যক্তিগত বার্তা",
+  "name": "GitBridge — নিরাপদ সংযোগ",
   "short_name": "GitBridge",
-  "description": "ইউজারনেম ও পাসওয়ার্ড দিয়ে নিরাপদ ১-অন-১ যোগাযোগ। Desktop, Android ও iOS-এ ইনস্টল করুন।",
+  "description": "ইউজারনেম ও পাসওয়ার্ড দিয়ে নিরাপদ ১-অন-১ ব্রিজ। Desktop, Android ও iOS-এ ইনস্টল করুন।",
   "lang": "bn",
   "dir": "ltr",
   "start_url": "./",
