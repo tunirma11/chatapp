@@ -15,17 +15,12 @@ import {
   onAuthChange,
   sendHeartbeat,
   getCurrentUser,
-  canQuickReenter,
   markDeviceOffline,
   isUsernameOnline,
   ensureAnonymousAuth,
 } from "./auth.js";
 import { loginAdmin, logoutAdmin, isAdminLoggedIn, touchAdminSession } from "./admin.js";
-import {
-  verifyRoomLogin,
-  isMemberPasswordVerified,
-  resolveRoomMember,
-} from "./room-gate.js";
+import { verifyRoomLogin } from "./room-gate.js";
 import {
   createRoom,
   getRoom,
@@ -35,7 +30,7 @@ import {
   isRoomFull,
 } from "./rooms.js";
 import { onRouteChange, navigateToAdmin, navigateToHome } from "./router.js";
-import { getPendingMessages, touchDeviceSession, getDeviceSession, clearRoomSession } from "./store.js";
+import { getPendingMessages, clearRoomSession } from "./store.js";
 import {
   enableOfflinePersistence,
   sendMessage,
@@ -67,10 +62,8 @@ import {
   setChatLoginLoading,
   showChatLoginError,
   hideChatLoginError,
-  showQuickChatHint,
   getSelectedAdminRoomId,
   setSelectedAdminRoomId,
-  setChatLoginQuickMode,
   showAdminLogin,
 } from "./ui-admin.js";
 import {
@@ -89,7 +82,7 @@ import {
   playSync,
   playSentConfirm,
 } from "./sounds.js";
-import { normalizeRoomCode, validateRoomCode } from "./constants.js";
+import { normalizeRoomCode, validateRoomCode, CHAT_IDLE_MS } from "./constants.js";
 import { formatFirebaseError } from "./errors.js";
 
 let currentRoomId = null;
@@ -109,6 +102,45 @@ let knownMessageIds = new Set();
 let messagesInitialized = false;
 let currentMessages = [];
 let adminRooms = [];
+let chatIdleTimer = null;
+let lastChatActivityAt = 0;
+
+const CHAT_AUTH_KEY = "chat-authenticated";
+
+function isChatAuthenticated() {
+  return sessionStorage.getItem(CHAT_AUTH_KEY) === "1";
+}
+
+function setChatAuthenticated(value) {
+  if (value) sessionStorage.setItem(CHAT_AUTH_KEY, "1");
+  else sessionStorage.removeItem(CHAT_AUTH_KEY);
+}
+
+function resetChatIdleTimer() {
+  if (!sessionStarted) return;
+  lastChatActivityAt = Date.now();
+  if (chatIdleTimer) clearTimeout(chatIdleTimer);
+  chatIdleTimer = setTimeout(() => {
+    handleChatIdleLogout().catch(() => {});
+  }, CHAT_IDLE_MS);
+}
+
+function stopChatIdleWatch() {
+  if (chatIdleTimer) {
+    clearTimeout(chatIdleTimer);
+    chatIdleTimer = null;
+  }
+}
+
+async function handleChatIdleLogout() {
+  if (!sessionStarted || !getCurrentUser()) return;
+  if (Date.now() - lastChatActivityAt < CHAT_IDLE_MS) {
+    resetChatIdleTimer();
+    return;
+  }
+  showToast("১০ মিনিট নিষ্ক্রিয় থাকায় লগআউট হয়েছে");
+  await handleLogout(false);
+}
 
 async function init() {
   try {
@@ -142,10 +174,15 @@ async function init() {
 
   onAuthChange(async (user) => {
     if (isEnteringChat) return;
+    if (!isChatAuthenticated()) {
+      if (user) await logout();
+      return;
+    }
     if (user && currentRoomId && user.roomId === currentRoomId) {
       enterChat(user);
     } else if (user && currentRoomId && user.roomId !== currentRoomId) {
       await logout();
+      setChatAuthenticated(false);
     } else if (!user && sessionStarted) {
       exitChat();
     }
@@ -212,27 +249,17 @@ async function bootstrapChatLogin(prefillRoomId) {
     roomInput.value = prefillRoomId;
   }
 
-  const deviceSession = await getDeviceSession();
-  const quickRoomId = deviceSession?.roomId || "";
-  const verified =
-    quickRoomId && deviceSession?.username
-      ? await isMemberPasswordVerified(quickRoomId, deviceSession.username)
-      : false;
-  const quick = quickRoomId ? (await canQuickReenter(quickRoomId)) && verified : false;
-
-  setChatLoginQuickMode(quick, quick ? quickRoomId : "");
-  showQuickChatHint(quick);
+  if (!isChatAuthenticated()) {
+    const user = getCurrentUser();
+    if (user) await logout();
+    return;
+  }
 
   const user = getCurrentUser();
   if (user?.roomId) {
     currentRoomId = user.roomId;
     await fetchMembersOnce(user.roomId);
     enterChat(user);
-    return;
-  }
-
-  if (quick && deviceSession?.roomId) {
-    await startChatFromLogin(deviceSession.roomId, null, true);
   }
 }
 
@@ -397,10 +424,10 @@ async function handleChatLogin(e) {
   e.preventDefault();
   const roomId = normalizeRoomCode(document.getElementById("chatRoomInput")?.value || "");
   const password = document.getElementById("chatPasswordInput")?.value || "";
-  await startChatFromLogin(roomId, password, false);
+  await startChatFromLogin(roomId, password);
 }
 
-async function startChatFromLogin(roomId, password, skipPasswordCheck) {
+async function startChatFromLogin(roomId, password) {
   const codeError = validateRoomCode(roomId);
   if (codeError) {
     showChatLoginError(codeError);
@@ -414,24 +441,11 @@ async function startChatFromLogin(roomId, password, skipPasswordCheck) {
     await ensureAnonymousAuth();
     currentRoomId = roomId;
 
-    let username;
-    if (skipPasswordCheck) {
-      const deviceSession = await getDeviceSession();
-      if (!deviceSession?.username || deviceSession.roomId !== roomId) {
-        throw new Error("আবার পাসওয়ার্ড দিন");
-      }
-      username = deviceSession.username;
-      if (!(await isMemberPasswordVerified(roomId, username))) {
-        throw new Error("আবার পাসওয়ার্ড দিন");
-      }
-      await resolveRoomMember(roomId, username);
-    } else {
-      if (!password) throw new Error("পাসওয়ার্ড দিন");
-      const member = await verifyRoomLogin(roomId, password);
-      username = member.id;
-    }
+    if (!password) throw new Error("পাসওয়ার্ড দিন");
+    const member = await verifyRoomLogin(roomId, password);
 
-    const user = await enterChatAsMember(roomId, username);
+    const user = await enterChatAsMember(roomId, member.id);
+    setChatAuthenticated(true);
     enterChat(user);
     playLogin();
     showToast("চ্যাট শুরু হয়েছে", "success");
@@ -442,6 +456,8 @@ async function startChatFromLogin(roomId, password, skipPasswordCheck) {
   } finally {
     isEnteringChat = false;
     setChatLoginLoading(false);
+    const passwordInput = document.getElementById("chatPasswordInput");
+    if (passwordInput) passwordInput.value = "";
   }
 }
 
@@ -464,13 +480,16 @@ function exitChat() {
   showView("home");
 }
 
-async function handleLogout() {
+async function handleLogout(showMessage = true) {
   playLogout();
+  setChatAuthenticated(false);
   await logout();
   await clearRoomSession();
   exitChat();
   navigateToHome();
-  showToast("লগআউট হয়েছে", "success");
+  const passwordInput = document.getElementById("chatPasswordInput");
+  if (passwordInput) passwordInput.value = "";
+  if (showMessage) showToast("লগআউট হয়েছে", "success");
 }
 
 function onMembersUpdated(list) {
@@ -505,6 +524,7 @@ async function handleSoundToggle() {
 function handleInputChange(e) {
   autoResizeTextarea(e.target);
   setSendEnabled(e.target.value.trim().length > 0);
+  resetChatIdleTimer();
 }
 
 function handleInputKeydown(e) {
@@ -523,6 +543,7 @@ async function handleSend() {
 
   clearMessageInput();
   playSend();
+  resetChatIdleTimer();
 
   try {
     const optimistic = await sendMessage(currentRoomId, text);
@@ -566,9 +587,11 @@ function startChatSession() {
   });
   heartbeatTimer = setInterval(sendHeartbeat, 30000);
   sendHeartbeat();
+  resetChatIdleTimer();
 }
 
 function stopChatSession() {
+  stopChatIdleWatch();
   if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }
   if (unsubscribeMembers) { unsubscribeMembers(); unsubscribeMembers = null; }
@@ -633,17 +656,24 @@ async function openPartnerChat(partner) {
 }
 
 function initDeviceLifecycle() {
-  const markActive = () => {
-    touchDeviceSession().catch(() => {});
+  const markAdminActive = () => {
     touchAdminSession().catch(() => {});
   };
-  document.addEventListener("click", markActive, { passive: true });
-  document.addEventListener("keydown", markActive, { passive: true });
-  document.addEventListener("touchstart", markActive, { passive: true });
+  const markChatActive = () => {
+    if (sessionStarted) resetChatIdleTimer();
+  };
+
+  document.addEventListener("click", markAdminActive, { passive: true });
+  document.addEventListener("keydown", markAdminActive, { passive: true });
+  document.getElementById("chatView")?.addEventListener("click", markChatActive, { passive: true });
+  document.getElementById("chatView")?.addEventListener("keydown", markChatActive, { passive: true });
+  document.getElementById("chatView")?.addEventListener("touchstart", markChatActive, { passive: true });
+  document.getElementById("messageInput")?.addEventListener("focus", markChatActive, { passive: true });
+
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && getCurrentUser()) {
+    if (document.visibilityState === "visible" && getCurrentUser() && sessionStarted) {
       sendHeartbeat();
-      touchDeviceSession().catch(() => {});
+      resetChatIdleTimer();
     }
   });
   window.addEventListener("pagehide", () => markDeviceOffline());

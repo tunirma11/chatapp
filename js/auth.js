@@ -10,7 +10,7 @@ import {
   serverTimestamp,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { auth, db } from "./firebase.js";
-import { QUICK_LOGIN_IDLE_MS, ONLINE_THRESHOLD_MS } from "./constants.js";
+import { ONLINE_THRESHOLD_MS } from "./constants.js";
 import {
   getDeviceSession,
   saveDeviceSession,
@@ -63,13 +63,6 @@ export async function enterChatAsMember(roomId, username) {
     await signOut(auth);
     throw err;
   }
-}
-
-export async function canQuickReenter(roomId) {
-  const session = await getDeviceSession();
-  if (!session?.roomId || session.roomId !== roomId) return false;
-  if (!session?.username) return false;
-  return Date.now() - (session.lastActiveAt || 0) < QUICK_LOGIN_IDLE_MS;
 }
 
 export async function ensureAnonymousAuth() {

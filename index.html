@@ -73,19 +73,15 @@
         </div>
 
         <div id="chatLoginError" class="alert alert-danger small py-2 d-none" role="alert"></div>
-        <div id="quickChatHint" class="quick-login-hint d-none mb-3">
-          <span class="quick-login-dot"></span>
-          <span>এই ডিভাইসে সক্রিয় — শুধু ইউজারনেম দিয়ে চালিয়ে যান</span>
-        </div>
 
-        <form id="chatLoginForm" novalidate>
+        <form id="chatLoginForm" novalidate autocomplete="off">
           <div class="form-floating mb-3">
-            <input type="text" class="form-control" id="chatRoomInput" placeholder="ইউজারনেম" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+            <input type="text" class="form-control" id="chatRoomInput" placeholder="ইউজারনেম" autocomplete="off" autocapitalize="none" spellcheck="false" required>
             <label for="chatRoomInput">ইউজারনেম (রুম)</label>
             <div class="form-text">প্রতিটি ইউজারনেম একটি আলাদা চ্যাট রুম</div>
           </div>
           <div class="form-floating mb-4" id="chatPasswordWrap">
-            <input type="password" class="form-control" id="chatPasswordInput" placeholder="পাসওয়ার্ড" autocomplete="current-password" required>
+            <input type="password" class="form-control" id="chatPasswordInput" placeholder="পাসওয়ার্ড" autocomplete="off" required>
             <label for="chatPasswordInput">পাসওয়ার্ড</label>
             <div class="form-text">আপনার পাসওয়ার্ড আপনাকে চিনবে</div>
           </div>

@@ -4,7 +4,7 @@ import { sha256Hex } from "./crypto-utils.js";
 import { ONLINE_THRESHOLD_MS, normalizeUserId, validateUserId } from "./constants.js";
 import { getRoom } from "./rooms.js";
 import { fetchMembersOnce, getMembers } from "./users.js";
-import { getRoomSession, saveRoomSession, getDeviceSession } from "./store.js";
+import { getDeviceSession } from "./store.js";
 import { ensureAnonymousAuth, isUserRecentlyActive } from "./auth.js";
 
 export async function findMemberByPassword(roomId, password) {
@@ -51,11 +51,6 @@ export async function verifyRoomLogin(roomId, password) {
     }
   }
 
-  await saveRoomSession({
-    roomId,
-    username,
-    passwordVerifiedAt: Date.now(),
-  });
   return member;
 }
 
@@ -79,20 +74,7 @@ export async function verifyMemberPassword(roomId, username, password) {
     throw new Error("ভুল পাসওয়ার্ড");
   }
 
-  await saveRoomSession({
-    roomId,
-    username,
-    passwordVerifiedAt: Date.now(),
-  });
   return member;
-}
-
-export async function isMemberPasswordVerified(roomId, username) {
-  const session = await getRoomSession();
-  if (!session?.roomId || session.roomId !== roomId) return false;
-  if (!session?.username || session.username !== username) return false;
-  if (!session.passwordVerifiedAt) return false;
-  return Date.now() - session.passwordVerifiedAt < 24 * 60 * 60 * 1000;
 }
 
 async function getOnlineUsernames(roomId) {
