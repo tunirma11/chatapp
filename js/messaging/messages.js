@@ -27,6 +27,7 @@ import {
   normalizeMessage,
   buildMessagePayload,
   isMessageVisible,
+  isMessageDeletedForViewer,
 } from "./message-model.js";
 import { extractFirstUrl, buildBasicLinkPreview } from "./links.js";
 
@@ -363,7 +364,24 @@ export async function softDeleteMessage(roomId, messageId) {
     deletedAt: serverTimestamp(),
     deletedBy: me.username,
     text: "",
+    imageUrl: null,
+    linkUrl: null,
+    linkPreview: null,
   });
+}
+
+/** Second member: hide only for self; primary member still sees the message */
+export async function hideMessageForSelf(roomId, messageId) {
+  const me = getCurrentUser();
+  if (!me) throw new Error("লগইন করা নেই");
+  await updateDoc(doc(db, "rooms", roomId, "messages", messageId), {
+    [`hiddenFor.${me.username}`]: serverTimestamp(),
+  });
+}
+
+export async function deleteMessage(roomId, messageId, { forEveryone }) {
+  if (forEveryone) return softDeleteMessage(roomId, messageId);
+  return hideMessageForSelf(roomId, messageId);
 }
 
 export async function toggleMessagePin(roomId, messageId, pinned) {
@@ -399,11 +417,11 @@ export async function clearAllMessages(roomId) {
   await setRoomClearedAt(roomId);
 }
 
-export function searchMessages(messages, queryText) {
+export function searchMessages(messages, queryText, viewerUsername = null) {
   const q = String(queryText || "").trim().toLowerCase();
   if (!q) return [];
   return messages.filter((m) => {
-    if (m.deletedAt) return false;
+    if (viewerUsername ? isMessageDeletedForViewer(m, viewerUsername) : m.deletedAt) return false;
     const text = (m.text || "").toLowerCase();
     const link = (m.linkUrl || "").toLowerCase();
     const name = (m.senderName || "").toLowerCase();

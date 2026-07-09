@@ -34,6 +34,7 @@ export function normalizeMessage(doc) {
     editedAt: normalizeTimestamp(data.editedAt) || null,
     deletedAt: normalizeTimestamp(data.deletedAt) || null,
     deletedBy: data.deletedBy || null,
+    hiddenFor: data.hiddenFor || {},
     read: data.read === true,
     readBy: data.readBy || {},
     deliveredBy: data.deliveredBy || {},
@@ -50,13 +51,26 @@ export function isMessageDeleted(msg) {
   return Boolean(msg?.deletedAt);
 }
 
+export function isMessageHiddenForUser(msg, username) {
+  if (!msg || !username) return false;
+  return msg.hiddenFor?.[username] != null;
+}
+
+/** Deleted globally or hidden only for this viewer */
+export function isMessageDeletedForViewer(msg, username) {
+  return isMessageDeleted(msg) || isMessageHiddenForUser(msg, username);
+}
+
 export function isMessageVisible(msg, clearedAt = 0) {
   if (isMessageDeleted(msg)) return true;
   if (!clearedAt) return true;
   return (msg.createdAt || 0) > clearedAt;
 }
 
-export function getMessagePreviewText(msg) {
+export function getMessagePreviewText(msg, viewerUsername = null) {
+  if (viewerUsername && isMessageHiddenForUser(msg, viewerUsername)) {
+    return "মেসেজ মুছে ফেলা হয়েছে";
+  }
   if (isMessageDeleted(msg)) return "মেসেজ মুছে ফেলা হয়েছে";
   if (msg.type === MESSAGE_TYPES.IMAGE) return msg.text?.trim() || "ছবি";
   if (msg.type === MESSAGE_TYPES.LINK) return msg.text?.trim() || msg.linkUrl || "লিংক";

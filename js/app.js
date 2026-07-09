@@ -8,6 +8,7 @@ import {
   adminAddMember,
   deleteMember,
   updateMemberPassword,
+  isPrimaryMember,
 } from "./users.js";
 import {
   enterChatAsMember,
@@ -41,7 +42,7 @@ import {
   listenRoomMeta,
   listenToRoomUsers,
   markMessagesAcknowledged,
-  softDeleteMessage,
+  deleteMessage,
   toggleMessagePin,
   toggleReaction,
   clearAllMessages,
@@ -50,7 +51,7 @@ import {
 } from "./chat.js";
 import { listenPresence, setTyping, stopTyping, isPartnerTyping } from "./messaging/presence.js";
 import { compressImage, prepareImageForMessage } from "./messaging/media.js";
-import { getMessagePreviewText } from "./messaging/message-model.js";
+import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer } from "./messaging/message-model.js";
 import { initOfflineSync, onConnectionStatusChange, flushOutbox, retryOutboxMessage } from "./offline.js";
 import {
   showView,
@@ -641,7 +642,10 @@ function refreshPartnerHeader() {
 }
 
 function getPinnedMessage() {
-  const pinned = currentMessages.filter((m) => m.pinned && !m.deletedAt);
+  const me = getCurrentUser();
+  const pinned = currentMessages.filter(
+    (m) => m.pinned && !isMessageDeletedForViewer(m, me?.username)
+  );
   if (!pinned.length) return null;
   return pinned.sort((a, b) => (b.pinnedAt || b.createdAt) - (a.pinnedAt || a.createdAt))[0];
 }
@@ -684,6 +688,7 @@ function refreshMessageUI({ scrollPolicy = "if-near" } = {}) {
       onReaction: handleReactionToggle,
       onImageOpen: (url, name) => showImageLightbox(url, name),
       partnerUsername,
+      currentUsername: me.username,
       getMessage: (id) => allMsgs.find((m) => m.id === id),
       scrollPolicy: policy,
     }, partner);
@@ -794,10 +799,15 @@ function handleMessageContextMenu(e, msg) {
   const x = e.clientX || e.touches?.[0]?.clientX || 0;
   const y = e.clientY || e.touches?.[0]?.clientY || 0;
   const own = isOwnMessage(msg, me.username, me.uid);
-  const canDelete =
+  const primary = isPrimaryMember(me.username);
+  const withinWindow = Date.now() - (msg.createdAt || 0) < MESSAGE_DELETE_WINDOW_MS;
+  const canDeletePrimary = primary && !msg.deletedAt;
+  const canDeleteSecondary =
+    !primary &&
     own &&
     !msg.deletedAt &&
-    Date.now() - (msg.createdAt || 0) < MESSAGE_DELETE_WINDOW_MS;
+    !isMessageHiddenForUser(msg, me.username) &&
+    withinWindow;
 
   const items = [
     { action: "reply", label: "উত্তর দিন" },
@@ -805,11 +815,11 @@ function handleMessageContextMenu(e, msg) {
     { action: "pin", label: msg.pinned ? "আনপিন করুন" : "পিন করুন" },
   ];
 
-  if (msg.imageUrl && !msg.deletedAt) {
+  if (msg.imageUrl && !isMessageDeletedForViewer(msg, me.username)) {
     items.splice(1, 0, { action: "download", label: "ছবি ডাউনলোড" });
   }
 
-  if (canDelete) {
+  if (canDeletePrimary || canDeleteSecondary) {
     items.push({ action: "delete", label: "মুছুন", danger: true });
   }
 
@@ -825,7 +835,7 @@ function handleMessageContextMenu(e, msg) {
         });
         focusMessageInput();
       } else if (action === "copy") {
-        await navigator.clipboard.writeText(getMessagePreviewText(msg));
+        await navigator.clipboard.writeText(getMessagePreviewText(msg, me.username));
         showToast("কপি হয়েছে", "success");
       } else if (action === "download") {
         const ts = msg.createdAt || Date.now();
@@ -840,8 +850,14 @@ function handleMessageContextMenu(e, msg) {
       } else if (action === "pin") {
         await toggleMessagePin(currentRoomId, msg.id, !msg.pinned);
       } else if (action === "delete") {
-        if (!confirm("এই মেসেজ মুছে ফেলবেন?")) return;
-        await softDeleteMessage(currentRoomId, msg.id);
+        const confirmText = primary
+          ? "এই মেসেজ উভয় পক্ষ থেকে মুছে ফেলবেন?"
+          : "এই মেসেজ মুছে ফেলবেন? উভয় পক্ষ থেকে মুছে যাবে।";
+        if (!confirm(confirmText)) return;
+        await deleteMessage(currentRoomId, msg.id, { forEveryone: primary });
+        if (!primary) {
+          showToast("মেসেজ মুছে ফেলা হয়েছে", "success");
+        }
       } else if (action === "react") {
         await toggleReaction(currentRoomId, msg.id, "👍", msg.reactions || {});
       }
@@ -863,8 +879,9 @@ async function handleReactionToggle(messageId, emoji) {
 
 function handleOpenSearch() {
   toggleRoomMenu(false);
+  const me = getCurrentUser();
   const runSearch = (queryText) => {
-    const results = searchMessages(currentMessages, queryText);
+    const results = searchMessages(currentMessages, queryText, me?.username);
     showSearchOverlay(
       results,
       queryText,

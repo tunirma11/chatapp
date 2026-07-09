@@ -90,6 +90,11 @@ export function listenToMembers(roomId, callback) {
 }
 
 const MEMBER_SLOTS = ["m1", "m2"];
+const PRIMARY_MEMBER_ID = "m1";
+
+export function isPrimaryMember(username) {
+  return username === PRIMARY_MEMBER_ID;
+}
 
 async function assertUniquePassword(tx, roomId, passwordHash, excludeId = null) {
   for (const slot of MEMBER_SLOTS) {

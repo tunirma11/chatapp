@@ -8,6 +8,8 @@ export {
   markMessagesDelivered,
   markMessagesAcknowledged,
   softDeleteMessage,
+  hideMessageForSelf,
+  deleteMessage,
   toggleMessagePin,
   toggleReaction,
   clearAllMessages,

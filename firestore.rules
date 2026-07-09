@@ -60,7 +60,8 @@ service cloud.firestore {
     function validMessageUpdate() {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       return changed.hasOnly([
-          'readBy', 'read', 'deliveredBy', 'deletedAt', 'deletedBy',
+          'readBy', 'read', 'deliveredBy', 'deletedAt', 'deletedBy', 'hiddenFor',
+          'imageUrl', 'linkUrl', 'linkPreview',
           'reactions', 'pinned', 'pinnedAt', 'editedAt', 'text'
         ]);
     }

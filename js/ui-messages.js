@@ -1,5 +1,5 @@
 import { getUserIndex } from "./users.js";
-import { REACTION_EMOJIS, MESSAGE_TYPES, isMessageDeleted, getMessagePreviewText, getOwnMessageStatus } from "./messaging/message-model.js";
+import { REACTION_EMOJIS, MESSAGE_TYPES, isMessageDeletedForViewer, getMessagePreviewText, getOwnMessageStatus } from "./messaging/message-model.js";
 import { linkifyText } from "./messaging/links.js";
 import { formatTime, formatDateSeparator } from "./ui/format.js";
 
@@ -122,8 +122,8 @@ function renderReactions(msg, myUsername) {
   return `<div class="msg-reactions">${pills}</div>`;
 }
 
-function renderMessageBody(msg, isOwn) {
-  if (isMessageDeleted(msg)) {
+function renderMessageBody(msg, isOwn, currentUsername) {
+  if (isMessageDeletedForViewer(msg, currentUsername)) {
     return `<div class="msg-deleted"><em>মেসেজ মুছে ফেলা হয়েছে</em></div>`;
   }
 
@@ -187,7 +187,7 @@ function buildAllMessages(messages, pendingLocal) {
   ].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
 
-function bodyKey(all) {
+function bodyKey(all, currentUsername) {
   return all
     .map((m) =>
       [
@@ -196,6 +196,7 @@ function bodyKey(all) {
         m.text,
         m.type,
         m.deletedAt,
+        m.hiddenFor?.[currentUsername] ? 1 : 0,
         m.pinned,
         JSON.stringify(m.reactions || {}),
         m.imageUrl ? 1 : 0,
@@ -240,7 +241,7 @@ function buildMessageRowHtml(msg, index, all, currentUsername, currentUid, partn
       ${avatarSlot}
       <div class="msg-bubble ${pendingClass} ${failedClass}" data-msg-id="${msg.id}">
         <div class="msg-body">
-          ${renderMessageBody(msg, isOwn)}
+          ${renderMessageBody(msg, isOwn, currentUsername)}
           ${renderReactions(msg, currentUsername)}
           <div class="msg-meta">
             <span class="msg-time">${formatTime(ts)}</span>
@@ -311,7 +312,7 @@ function ensureMessageEvents(container) {
 
   const openContext = (e, bubble) => {
     const msg = messageHandlers.getMessage?.(bubble.dataset.msgId);
-    if (msg && !isMessageDeleted(msg)) {
+    if (msg && !isMessageDeletedForViewer(msg, messageHandlers.currentUsername)) {
       messageHandlers.onContextMenu?.(e, msg);
     }
   };
@@ -399,7 +400,7 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
     return;
   }
 
-  const newBodyKey = bodyKey(all);
+  const newBodyKey = bodyKey(all, currentUsername);
   const newAckKey = ackKey(all);
   const scrollPolicy = handlers.scrollPolicy || "if-near";
 
