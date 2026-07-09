@@ -68,6 +68,7 @@ import {
   showReplyPreview,
   showSearchOverlay,
   showImageLightbox,
+  downloadImage,
   renderPinnedBar,
   setUploadProgress,
   pulseSendButton,
@@ -615,7 +616,7 @@ function refreshMessageUI() {
     onRetry: handleRetry,
     onContextMenu: handleMessageContextMenu,
     onReaction: handleReactionToggle,
-    onImageOpen: showImageLightbox,
+    onImageOpen: (url, name) => showImageLightbox(url, name),
     partnerUsername,
   }, partner);
 
@@ -725,6 +726,10 @@ function handleMessageContextMenu(e, msg) {
     { action: "pin", label: msg.pinned ? "আনপিন করুন" : "পিন করুন" },
   ];
 
+  if (msg.imageUrl && !msg.deletedAt) {
+    items.splice(1, 0, { action: "download", label: "ছবি ডাউনলোড" });
+  }
+
   if (canDelete) {
     items.push({ action: "delete", label: "মুছুন", danger: true });
   }
@@ -743,6 +748,16 @@ function handleMessageContextMenu(e, msg) {
       } else if (action === "copy") {
         await navigator.clipboard.writeText(getMessagePreviewText(msg));
         showToast("কপি হয়েছে", "success");
+      } else if (action === "download") {
+        const ts = msg.createdAt || Date.now();
+        const sender = String(msg.senderName || msg.senderId || "image")
+          .trim()
+          .replace(/\s+/g, "-")
+          .replace(/[^a-zA-Z0-9_-]/g, "")
+          .slice(0, 24) || "image";
+        const date = new Date(typeof ts === "number" ? ts : ts).toISOString().slice(0, 10);
+        downloadImage(msg.imageUrl, `gitbridge-${sender}-${date}.webp`);
+        showToast("ডাউনলোড শুরু হয়েছে", "success");
       } else if (action === "pin") {
         await toggleMessagePin(currentRoomId, msg.id, !msg.pinned);
       } else if (action === "delete") {

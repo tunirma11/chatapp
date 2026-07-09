@@ -1461,28 +1461,56 @@ html, body {
   z-index: 2200;
   background: rgba(0, 0, 0, 0.92);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  gap: 1rem;
+}
+
+.image-lightbox-actions {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  z-index: 2;
 }
 
 .image-lightbox img {
   max-width: 100%;
-  max-height: 100%;
+  max-height: calc(100% - 4rem);
   object-fit: contain;
   border-radius: 8px;
 }
 
+.image-lightbox-download,
 .image-lightbox-close {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
   border: none;
   background: rgba(255, 255, 255, 0.15);
   color: #fff;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  backdrop-filter: blur(8px);
+}
+
+.image-lightbox-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  font-weight: 600;
+}
+
+.image-lightbox-download:hover,
+.image-lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.image-lightbox-close {
   width: 44px;
   height: 44px;
-  border-radius: 50%;
   font-size: 1.25rem;
 }
 

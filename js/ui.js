@@ -12,6 +12,7 @@ export {
   showReplyPreview,
   showSearchOverlay,
   showImageLightbox,
+  downloadImage,
   renderPinnedBar,
   setUploadProgress,
   pulseSendButton,

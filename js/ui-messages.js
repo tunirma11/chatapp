@@ -75,10 +75,34 @@ function renderLinkPreview(msg) {
     </a>`;
 }
 
+function imageDownloadName(msg) {
+  const ts = msg.createdAt || Date.now();
+  const sender = String(msg.senderName || msg.senderId || "image")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 24) || "image";
+  const date = new Date(typeof ts === "number" ? ts : ts).toISOString().slice(0, 10);
+  return `gitbridge-${sender}-${date}.webp`;
+}
+
+export function downloadImage(url, filename) {
+  if (!url) return;
+  const name = filename || `gitbridge-${Date.now()}.webp`;
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
 function renderImageContent(msg) {
   if (!msg.imageUrl) return "";
   const alt = escapeHtml(msg.text || "ছবি");
-  return `<button type="button" class="msg-image-btn" data-image-url="${escapeHtml(msg.imageUrl)}" aria-label="ছবি দেখুন">
+  const filename = escapeHtml(imageDownloadName(msg));
+  return `<button type="button" class="msg-image-btn" data-image-url="${escapeHtml(msg.imageUrl)}" data-download-name="${filename}" aria-label="ছবি দেখুন">
     <img class="msg-image" src="${escapeHtml(msg.imageThumbUrl || msg.imageUrl)}" alt="${alt}" loading="lazy" />
   </button>`;
 }
@@ -269,7 +293,9 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
   });
 
   container.querySelectorAll(".msg-image-btn").forEach((btn) => {
-    btn.addEventListener("click", () => onImageOpen?.(btn.dataset.imageUrl));
+    btn.addEventListener("click", () =>
+      onImageOpen?.(btn.dataset.imageUrl, btn.dataset.downloadName)
+    );
   });
 
   if (wasNearBottom || animIndex <= 3) scrollToBottom();
@@ -391,7 +417,7 @@ export function showSearchOverlay(results, queryText, onQuery, onSelect, onClose
   });
 }
 
-export function showImageLightbox(url) {
+export function showImageLightbox(url, filename) {
   let box = document.getElementById("imageLightbox");
   if (!box) {
     box = document.createElement("div");
@@ -400,15 +426,27 @@ export function showImageLightbox(url) {
     document.body.appendChild(box);
   }
 
+  const name = filename || `gitbridge-${Date.now()}.webp`;
+
   box.innerHTML = `
-    <button type="button" class="image-lightbox-close" aria-label="বন্ধ">✕</button>
+    <div class="image-lightbox-actions">
+      <button type="button" class="image-lightbox-download" aria-label="ছবি ডাউনলোড">
+        <svg width="18" height="18" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/></svg>
+        ডাউনলোড
+      </button>
+      <button type="button" class="image-lightbox-close" aria-label="বন্ধ">✕</button>
+    </div>
     <img src="${escapeHtml(url)}" alt="ছবি" />`;
   box.classList.remove("d-none");
 
   const close = () => box.classList.add("d-none");
   box.querySelector(".image-lightbox-close")?.addEventListener("click", close);
+  box.querySelector(".image-lightbox-download")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    downloadImage(url, name);
+  });
   box.addEventListener("click", (e) => {
-    if (e.target === box) close();
+    if (e.target === box || e.target.tagName === "IMG") close();
   });
 }
 
