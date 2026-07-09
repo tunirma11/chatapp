@@ -370,6 +370,21 @@ export function renderPinnedBar(pinnedMessage, onUnpin) {
   document.getElementById("unpinBtn")?.addEventListener("click", () => onUnpin?.(pinnedMessage.id));
 }
 
+function applyScrollPolicy(container, policy) {
+  if (!policy || policy === "none") return;
+  if (policy === "force") {
+    scrollToBottom(false);
+    return;
+  }
+  if (policy === "smooth") {
+    scrollToBottom(true);
+    return;
+  }
+  const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+  const rowCount = container.querySelectorAll(".msg-row").length;
+  if (nearBottom || rowCount <= 3) scrollToBottom(false);
+}
+
 export function renderMessages(messages, currentUsername, currentUid, pendingLocal = [], handlers = {}, partner = null) {
   const container = document.getElementById("messages");
   if (!container) return;
@@ -386,7 +401,7 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
 
   const newBodyKey = bodyKey(all);
   const newAckKey = ackKey(all);
-  const wasNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+  const scrollPolicy = handlers.scrollPolicy || "if-near";
 
   ensureMessageEvents(container);
 
@@ -427,7 +442,7 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
     renderCache.ackKey = newAckKey;
     renderCache.ids = all.map((m) => m.id);
 
-    if (wasNearBottom) scrollToBottom();
+    applyScrollPolicy(container, scrollPolicy);
     return;
   }
 
@@ -450,7 +465,7 @@ export function renderMessages(messages, currentUsername, currentUid, pendingLoc
   renderCache.ackKey = newAckKey;
   renderCache.ids = all.map((m) => m.id);
 
-  if (wasNearBottom || all.length <= 3) scrollToBottom(false);
+  applyScrollPolicy(container, scrollPolicy);
   bindMessagesScroll();
 }
 
@@ -458,8 +473,18 @@ export function scrollToBottom(smooth = true) {
   const el = document.getElementById("messages");
   const btn = document.getElementById("scrollBottomBtn");
   if (!el) return;
-  el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
-  btn?.classList.add("d-none");
+
+  const behavior = smooth ? "smooth" : "auto";
+  const apply = () => el.scrollTo({ top: el.scrollHeight, behavior });
+
+  apply();
+  requestAnimationFrame(() => {
+    apply();
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+      btn?.classList.add("d-none");
+    });
+  });
 }
 
 export function showMessageContextMenu(x, y, items, onSelect) {

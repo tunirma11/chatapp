@@ -616,13 +616,21 @@ function buildReplyPayload(msg) {
   };
 }
 
-function refreshMessageUI() {
+let scrollToBottomNext = false;
+
+function refreshMessageUI({ scrollPolicy = "if-near" } = {}) {
   if (renderUiRaf) cancelAnimationFrame(renderUiRaf);
   renderUiRaf = requestAnimationFrame(() => {
     renderUiRaf = null;
     const me = getCurrentUser();
     const partner = partnerUsername ? getMemberById(partnerUsername) : null;
     if (!me) return;
+
+    let policy = scrollPolicy;
+    if (scrollToBottomNext) {
+      policy = "smooth";
+      scrollToBottomNext = false;
+    }
 
     const allMsgs = [
       ...currentMessages,
@@ -638,6 +646,7 @@ function refreshMessageUI() {
       onImageOpen: (url, name) => showImageLightbox(url, name),
       partnerUsername,
       getMessage: (id) => allMsgs.find((m) => m.id === id),
+      scrollPolicy: policy,
     }, partner);
 
     renderPinnedBar(getPinnedMessage(), async (msgId) => {
@@ -697,7 +706,7 @@ async function handleSend() {
     const optimistic = await sendMessage(currentRoomId, text, { replyTo });
     if (optimistic) {
       pendingLocalMessages.push(optimistic);
-      refreshMessageUI();
+      refreshMessageUI({ scrollPolicy: "smooth" });
     }
     replyToMessage = null;
     showReplyPreview(null);
@@ -724,6 +733,7 @@ async function handleImageSelect(e) {
     const caption = document.getElementById("messageInput")?.value?.trim() || "";
     const replyTo = buildReplyPayload(replyToMessage);
 
+    scrollToBottomNext = true;
     await sendImageMessage(currentRoomId, imageUrl, { width, height, replyTo }, caption);
     clearMessageInput();
     replyToMessage = null;
@@ -946,6 +956,8 @@ async function openPartnerChat(partner) {
     }
     if (messages === null) return;
 
+    const isInitialHistoryLoad = !messagesInitialized;
+
     if (!messagesInitialized) {
       messages.forEach((m) => knownMessageIds.add(m.id));
       messagesInitialized = true;
@@ -981,7 +993,7 @@ async function openPartnerChat(partner) {
       }
     });
 
-    refreshMessageUI();
+    refreshMessageUI({ scrollPolicy: isInitialHistoryLoad ? "force" : "if-near" });
     scheduleMessageAck();
   }, roomClearedAt);
 }
