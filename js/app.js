@@ -79,6 +79,7 @@ import {
   pulseSendButton,
   resetMessageRenderCache,
   toggleRoomMenu,
+  setClearChatVisible,
   scrollToBottom,
   isOwnMessage,
 } from "./ui.js";
@@ -571,6 +572,7 @@ async function startChatFromLogin(roomId, password) {
 
 function enterChat(user) {
   if (isAdminRoute()) return;
+  setClearChatVisible(isPrimaryMember(user.username));
   showView("chat");
   if (!sessionStarted) {
     startChatSession();
@@ -591,6 +593,7 @@ function exitChat() {
   sessionStarted = false;
   partnerUsername = null;
   currentRoomId = null;
+  setClearChatVisible(false);
   showView("home");
 }
 
@@ -971,7 +974,8 @@ function handleOpenSearch() {
 
 async function handleClearChat() {
   toggleRoomMenu(false);
-  if (!currentRoomId) return;
+  const me = getCurrentUser();
+  if (!currentRoomId || !me || !isPrimaryMember(me.username)) return;
   if (!confirm("সমস্ত কথোপকথন মুছে ফেলবেন? এটি পূর্বাবস্থায় ফেরানো যাবে না।")) return;
 
   try {

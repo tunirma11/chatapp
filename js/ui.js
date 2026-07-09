@@ -228,3 +228,7 @@ export function setSendEnabled(enabled) {
 export function toggleRoomMenu(open) {
   document.getElementById("roomMenu")?.classList.toggle("d-none", !open);
 }
+
+export function setClearChatVisible(visible) {
+  document.getElementById("clearChatBtn")?.classList.toggle("d-none", !visible);
+}
