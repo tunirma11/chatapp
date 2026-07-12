@@ -22,9 +22,12 @@ export const IMAGE_STRIP_DAYS_DEFAULT = 7;
 export const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 export const PURGE_BATCH_SIZE = 200;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
-export const MAX_IMAGE_DIMENSION = 960;
-/** Firestore doc সীমা ১ MB — base64 ছবি ~৪৫০ KB পর্যন্ত */
-export const MAX_IMAGE_DATA_URL_LENGTH = 520000;
+/** চ্যাটে পাঠানোর আগে সর্বোচ্চ পাশ — ছোট রাখলে আরও ছবি পাঠানো যায় */
+export const MAX_IMAGE_DIMENSION = 720;
+/** কম্প্রেসড WebP আউটপুট ~২০–৩০ KB */
+export const MAX_IMAGE_OUTPUT_BYTES = 30 * 1024;
+/** ~৩০ KB blob → base64 data URL (~৪০ KB) */
+export const MAX_IMAGE_DATA_URL_LENGTH = 42000;
 export const MESSAGE_DELETE_WINDOW_MS = 15 * 60 * 1000;
 
 export function normalizeUserId(raw) {

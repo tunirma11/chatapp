@@ -58,3 +58,71 @@ export function formatFirebaseError(err) {
 
   return message;
 }
+
+/** ছবি পাঠানোর সব ধাপের জন্য স্পষ্ট বাংলা মেসেজ */
+export function formatImageSendError(err) {
+  const code = err?.code || "";
+  const message = err?.message || String(err || "");
+
+  switch (code) {
+    case "image/no-file":
+      return "কোনো ছবি বেছে নেওয়া হয়নি";
+    case "image/not-ready":
+      return "রুমে লগইন করে আবার ছবি পাঠান";
+    case "image/invalid-type":
+      return "শুধু JPEG, PNG, WebP বা GIF ছবি পাঠানো যাবে";
+    case "image/too-large":
+      return "ছবির সাইজ ৫ MB এর বেশি — ছোট ছবি বেছে নিন";
+    case "image/empty-file":
+      return "ছবি ফাইল খালি বা নষ্ট — অন্য ছবি বেছে নিন";
+    case "image/load-failed":
+      return "ছবি খোলা যায়নি — ফাইল নষ্ট বা এই ব্রাউজারে সাপোর্ট নেই";
+    case "image/convert-failed":
+      return "ছবি রূপান্তর করা যায়নি — অন্য ফরম্যাটের ছবি চেষ্টা করুন";
+    case "image/process-failed":
+      return "ছবি প্রসেস করা যায়নি — ব্রাউজার রিফ্রেশ করে আবার চেষ্টা করুন";
+    case "image/compress-failed":
+      return "ছবি ছোট করা যায়নি — অন্য ছবি বেছে নিন";
+    case "image/too-complex":
+      return "ছবি কম্প্রেস করেও বড় রয়ে গেছে — অন্য/ছোট ছবি পাঠান";
+    case "permission-denied":
+      return "ছবি পাঠানোর অনুমতি নেই — লগইন ও রুম মেম্বারশিপ যাচাই করুন";
+    case "unauthenticated":
+      return "সেশন শেষ — আবার লগইন করে ছবি পাঠান";
+    case "resource-exhausted":
+      return "সার্ভার সীমা পূর্ণ — কিছুক্ষণ পর আবার চেষ্টা করুন";
+    case "deadline-exceeded":
+      return "ছবি পাঠাতে সময় লেগেছে — ইন্টারনেট চেক করে আবার চেষ্টা করুন";
+    case "unavailable":
+    case "auth/network-request-failed":
+      return "ইন্টারনেট সংযোগ নেই বা দুর্বল — সংযোগ ঠিক করে আবার পাঠান";
+    case "invalid-argument":
+      return "ছবির ডেটা অবৈধ — অন্য ছবি বেছে নিন";
+    case "cancelled":
+      return "ছবি পাঠানো বাতিল হয়েছে";
+    default:
+      break;
+  }
+
+  // আমাদের নিজস্ব বাংলা মেসেজ থাকলে সরাসরি দেখাও
+  if (/[\u0980-\u09FF]/.test(message) && message.length < 160) {
+    return message;
+  }
+
+  if (!navigator.onLine) {
+    return "অফলাইন আছেন — সংযোগ এলে ছবি পাঠানো যাবে";
+  }
+
+  const firebaseMsg = formatFirebaseError(err);
+  if (firebaseMsg && firebaseMsg !== message) {
+    return `ছবি পাঠানো যায়নি — ${firebaseMsg}`;
+  }
+
+  return "ছবি পাঠানো যায়নি — আবার চেষ্টা করুন";
+}
+
+export function imageError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}

@@ -114,7 +114,7 @@ import {
 } from "./sounds.js";
 import { formatLastSeen } from "./ui/format.js";
 import { normalizeRoomCode, validateRoomCode, CHAT_IDLE_MS, APP_NAME, TYPING_DEBOUNCE_MS, MESSAGE_DELETE_WINDOW_MS, HEARTBEAT_INTERVAL_MS, ACK_DEBOUNCE_MS } from "./constants.js";
-import { formatFirebaseError } from "./errors.js";
+import { formatFirebaseError, formatImageSendError, imageError } from "./errors.js";
 
 let currentRoomId = null;
 let partnerUsername = null;
@@ -851,10 +851,16 @@ async function handleSend() {
 async function handleImageSelect(e) {
   const file = e.target.files?.[0];
   e.target.value = "";
-  if (!file || !currentRoomId) return;
+
+  // ফাইল পিকার বাতিল হলে নীরবে ফিরে যাও
+  if (!file) return;
 
   const me = getCurrentUser();
-  if (!me) return;
+  if (!me || !currentRoomId) {
+    playError();
+    showToast(formatImageSendError(imageError("image/not-ready")));
+    return;
+  }
 
   const caption = document.getElementById("messageInput")?.value?.trim() || "";
   const replyTo = buildReplyPayload(replyToMessage);
@@ -890,7 +896,7 @@ async function handleImageSelect(e) {
       refreshMessageUI();
     }
     playError();
-    showToast(formatFirebaseError(err));
+    showToast(formatImageSendError(err));
   }
 }
 
