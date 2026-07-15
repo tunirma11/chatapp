@@ -1,5 +1,14 @@
 import { getUserIndex } from "./users.js";
-import { REACTION_EMOJIS, MESSAGE_TYPES, isMessageDeletedForViewer, getMessagePreviewText, getOwnMessageStatus } from "./messaging/message-model.js";
+import {
+  REACTION_EMOJIS,
+  MESSAGE_TYPES,
+  isMessageDeletedForViewer,
+  getMessagePreviewText,
+  getOwnMessageStatus,
+  getPartnerDeleteWarning,
+  getPartnerHideUsernames,
+  getDeletedMessageLabel,
+} from "./messaging/message-model.js";
 import { linkifyText } from "./messaging/links.js";
 import { formatTime, formatDateSeparator } from "./ui/format.js";
 
@@ -125,12 +134,21 @@ function renderReactions(msg, myUsername) {
   return `<div class="msg-reactions">${pills}</div>`;
 }
 
+function renderPartnerDeleteWarning(msg, currentUsername) {
+  const warning = getPartnerDeleteWarning(msg, currentUsername);
+  if (!warning) return "";
+  return `<div class="msg-delete-warning" role="status" title="${escapeHtml(warning)}">
+    <strong>সতর্কতা</strong> — ${escapeHtml(warning)}
+  </div>`;
+}
+
 function renderMessageBody(msg, isOwn, currentUsername) {
   if (isMessageDeletedForViewer(msg, currentUsername)) {
-    return `<div class="msg-deleted"><em>মেসেজ মুছে ফেলা হয়েছে</em></div>`;
+    return `<div class="msg-deleted"><em>${escapeHtml(getDeletedMessageLabel(msg, currentUsername))}</em></div>`;
   }
 
-  let html = renderReplyQuote(msg.replyTo);
+  let html = renderPartnerDeleteWarning(msg, currentUsername);
+  html += renderReplyQuote(msg.replyTo);
 
   if (msg.type === MESSAGE_TYPES.IMAGE) {
     html += renderImageContent(msg);
@@ -202,6 +220,7 @@ function bodyKey(all, currentUsername, currentUid, newMessagesSince = 0) {
           m.type,
           m.deletedAt,
           m.hiddenFor?.[currentUsername] ? 1 : 0,
+          getPartnerHideUsernames(m, currentUsername).join(","),
           m.pinned,
           JSON.stringify(m.reactions || {}),
           m.imageUrl ? 1 : 0,

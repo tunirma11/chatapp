@@ -1365,6 +1365,22 @@ html, body {
   font-style: italic;
 }
 
+.msg-delete-warning {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #8a6d3b;
+  background: #fff8e6;
+  border: 1px solid #f0e0b2;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  margin-bottom: 0.4rem;
+}
+
+.msg-row.own .msg-delete-warning {
+  background: rgba(255, 248, 230, 0.92);
+  border-color: rgba(240, 224, 178, 0.9);
+}
+
 .msg-highlight .msg-bubble {
   animation: msgHighlight 1.2s ease;
 }

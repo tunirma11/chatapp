@@ -960,11 +960,11 @@ function handleMessageContextMenu(e, msg) {
       } else if (action === "delete") {
         const confirmText = primary
           ? "এই মেসেজ উভয় পক্ষ থেকে মুছে ফেলবেন?"
-          : "এই মেসেজ মুছে ফেলবেন? উভয় পক্ষ থেকে মুছে যাবে।";
+          : "এই মেসেজ মুছে ফেলবেন?";
         if (!confirm(confirmText)) return;
         await deleteMessage(currentRoomId, msg.id, { forEveryone: primary });
         if (!primary) {
-          showToast("মেসেজ মুছে ফেলা হয়েছে", "success");
+          showToast("সবার থেকে মেসেজ মুছে ফেলা হয়েছে", "success");
         }
       } else if (action === "react") {
         await toggleReaction(currentRoomId, msg.id, "👍", msg.reactions || {});
