@@ -1,4 +1,4 @@
-const CACHE_NAME = "gitbridge-v56";
+const CACHE_NAME = "gitbridge-v58";
 
 const ASSETS = [
   "./",
@@ -117,15 +117,27 @@ self.addEventListener("push", (event) => {
     }
   }
 
-  // Only the admin message text — no body URL, no app link in the notification UI.
+  const NOTIFY_TAG = "gitbridge-chat-notify";
+
+  // Close any existing drawer items with this tag, then show one replacement.
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: undefined,
-      icon: "./icons/icon-192.png",
-      badge: "./icons/icon-192.png",
-      silent: false,
-      data: { kind: "m1-text-only" },
-    })
+    (async () => {
+      const existing = await self.registration.getNotifications({ tag: NOTIFY_TAG });
+      for (const n of existing) n.close();
+      // Also close legacy tag from older builds
+      const legacy = await self.registration.getNotifications({ tag: "gitbridge-m1-notify" });
+      for (const n of legacy) n.close();
+
+      await self.registration.showNotification(title, {
+        body: undefined,
+        icon: "./icons/icon-192.png",
+        badge: "./icons/icon-192.png",
+        tag: NOTIFY_TAG,
+        renotify: true,
+        silent: false,
+        data: { kind: "chat-text-only" },
+      });
+    })()
   );
 });
 

@@ -3,7 +3,7 @@ import { sendMessageToServer, retryOutboxMessage } from "./messaging/messages.js
 import { getCurrentUser } from "./auth.js";
 import { buildMessagePayload, MESSAGE_TYPES } from "./messaging/message-model.js";
 import { isPrimaryMember } from "./users.js";
-import { notifyM1Device } from "./push.js";
+import { notifyM1Device, notifyM2Device } from "./push.js";
 
 let connectionStatus = "online";
 let statusCallback = null;
@@ -28,6 +28,15 @@ function setStatus(status) {
   connectionStatus = status;
   if (statusCallback) {
     statusCallback(status, STATUS_LABELS[status]);
+  }
+}
+
+function notifyPartner(me, roomId) {
+  if (!me || !roomId) return;
+  if (isPrimaryMember(me.username)) {
+    notifyM2Device(roomId).catch(() => {});
+  } else {
+    notifyM1Device(roomId).catch(() => {});
   }
 }
 
@@ -57,9 +66,7 @@ export async function flushOutbox() {
         });
         await sendMessageToServer(item.roomId, payload, item.id);
         await removeFromOutbox(item.id);
-        if (me && !isPrimaryMember(me.username)) {
-          notifyM1Device(item.roomId).catch(() => {});
-        }
+        notifyPartner(me, item.roomId);
       } catch {
         const retries = (item.retries || 0) + 1;
         await updateOutboxMessage(item.id, {

@@ -232,3 +232,12 @@ export function toggleRoomMenu(open) {
 export function setClearChatVisible(visible) {
   document.getElementById("clearChatBtn")?.classList.toggle("d-none", !visible);
 }
+
+export function setM2PushApproveVisible(visible) {
+  document.getElementById("m2PushApproveRow")?.classList.toggle("d-none", !visible);
+}
+
+export function setM2PushApproveChecked(checked) {
+  const el = document.getElementById("m2PushApproveToggle");
+  if (el) el.checked = Boolean(checked);
+}

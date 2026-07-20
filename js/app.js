@@ -57,7 +57,7 @@ import { listenPresence, setTyping, stopTyping, isPartnerTyping } from "./messag
 import { compressImage, prepareImageForMessage } from "./messaging/media.js";
 import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer } from "./messaging/message-model.js";
 import { initOfflineSync, onConnectionStatusChange, flushOutbox, retryOutboxMessage } from "./offline.js";
-import { initM1Push, notifyM1Device } from "./push.js";
+import { initM1Push, notifyM1Device, notifyM2Device, getM2PushEnabled, setM2PushEnabled } from "./push.js";
 import {
   showView,
   showToast,
@@ -83,6 +83,8 @@ import {
   resetMessageRenderCache,
   toggleRoomMenu,
   setClearChatVisible,
+  setM2PushApproveVisible,
+  setM2PushApproveChecked,
   scrollToBottom,
   isOwnMessage,
 } from "./ui.js";
@@ -290,6 +292,8 @@ async function init() {
   });
   document.getElementById("searchMessagesBtn")?.addEventListener("click", handleOpenSearch);
   document.getElementById("clearChatBtn")?.addEventListener("click", handleClearChat);
+  document.getElementById("m2PushApproveToggle")?.addEventListener("change", handleM2PushApproveToggle);
+  document.getElementById("m2PushApproveRow")?.addEventListener("click", (e) => e.stopPropagation());
   document.addEventListener("click", () => toggleRoomMenu(false));
 
   onRouteChange(async (route) => {
@@ -638,6 +642,13 @@ async function startChatFromLogin(roomId, password) {
 function enterChat(user) {
   if (isAdminRoute()) return;
   setClearChatVisible(isPrimaryMember(user.username));
+  const isM2 = !isPrimaryMember(user.username);
+  setM2PushApproveVisible(isM2);
+  if (isM2 && currentRoomId) {
+    getM2PushEnabled(currentRoomId)
+      .then((enabled) => setM2PushApproveChecked(enabled))
+      .catch(() => setM2PushApproveChecked(false));
+  }
   showView("chat");
   if (!sessionStarted) {
     startChatSession();
@@ -660,6 +671,7 @@ function exitChat() {
   currentRoomId = null;
   clearChatLocalState();
   setClearChatVisible(false);
+  setM2PushApproveVisible(false);
   showView("home");
 }
 
@@ -896,6 +908,16 @@ function handleInputKeydown(e) {
   }
 }
 
+/** m2→m1 needs admin on; m1→m2 needs only m2 toggle (no admin). */
+function notifyPartnerAfterSend(me, roomId) {
+  if (!me || !roomId) return;
+  if (isPrimaryMember(me.username)) {
+    notifyM2Device(roomId).catch(() => {});
+  } else {
+    notifyM1Device(roomId).catch(() => {});
+  }
+}
+
 async function handleSend() {
   const input = document.getElementById("messageInput");
   const text = input.value.trim();
@@ -919,8 +941,8 @@ async function handleSend() {
     replyToMessage = null;
     showReplyPreview(null);
     if (navigator.onLine) flushOutbox();
-    if (!isPrimaryMember(me.username) && optimistic?.status !== "pending" && optimistic?.status !== "failed") {
-      notifyM1Device(currentRoomId).catch(() => {});
+    if (optimistic?.status !== "pending" && optimistic?.status !== "failed") {
+      notifyPartnerAfterSend(me, currentRoomId);
     }
   } catch (err) {
     playError();
@@ -967,9 +989,7 @@ async function handleImageSelect(e) {
       showToast("ছবি অফলাইনে সংরক্ষিত — সংযোগ এলে পাঠানো হবে");
     } else {
       showToast("ছবি পাঠানো হয়েছে", "success");
-      if (!isPrimaryMember(me.username)) {
-        notifyM1Device(currentRoomId).catch(() => {});
-      }
+      notifyPartnerAfterSend(me, currentRoomId);
     }
     if (navigator.onLine) flushOutbox();
   } catch (err) {
@@ -1113,6 +1133,23 @@ async function handleClearChat() {
   }
 }
 
+async function handleM2PushApproveToggle(e) {
+  e.stopPropagation();
+  const me = getCurrentUser();
+  if (!currentRoomId || !me || isPrimaryMember(me.username)) return;
+  const enabled = Boolean(e.target?.checked);
+  try {
+    await setM2PushEnabled(currentRoomId, enabled);
+    showToast(
+      enabled ? "নোটিফিকেশন চালু" : "নোটিফিকেশন বন্ধ",
+      "success"
+    );
+  } catch (err) {
+    setM2PushApproveChecked(!enabled);
+    showToast(formatFirebaseError(err));
+  }
+}
+
 async function handleRetry(localId) {
   const pending = await getPendingMessages();
   const item = pending.find((p) => p.id === localId);
@@ -1123,9 +1160,7 @@ async function handleRetry(localId) {
     playSentConfirm();
     showToast("মেসেজ পাঠানো হয়েছে", "success");
     const me = getCurrentUser();
-    if (me && !isPrimaryMember(me.username)) {
-      notifyM1Device(item.roomId).catch(() => {});
-    }
+    if (me) notifyPartnerAfterSend(me, item.roomId);
   } else {
     playError();
     showToast("পাঠানো ব্যর্থ — আবার চেষ্টা করুন");

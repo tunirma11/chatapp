@@ -7,10 +7,9 @@
  *   VAPID_SUBJECT   (e.g. mailto:admin@example.com)
  *   FIREBASE_PROJECT_ID  (default: chatapp-1dfee)
  *
- * Deploy:
- *   cd push-sender
- *   deno deploy --project=<your-project> main.ts
- * Then set js/push-config.js PUSH_SENDER_URL to the HTTPS origin.
+ * POST /notify JSON: { roomId, target: "m1" | "m2" }
+ *   m1 — requires rooms/{id}.pushNotifyM1 == true; trigger by non-m1
+ *   m2 — requires members/m2.pushNotifyEnabled == true; trigger by m1; no admin gate
  */
 
 import webpush from "npm:web-push@3.6.7";
@@ -97,65 +96,8 @@ function parsePushSubs(mapFields) {
   return out;
 }
 
-async function handleNotify(req, origin) {
-  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
-    return json(500, { error: "vapid_not_configured" }, origin);
-  }
-
-  const auth = req.headers.get("Authorization") || "";
-  const idToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!idToken) return json(401, { error: "missing_token" }, origin);
-
-  let body;
-  try {
-    body = await req.json();
-  } catch {
-    return json(400, { error: "invalid_json" }, origin);
-  }
-
-  const roomId = String(body?.roomId || "").trim();
-  if (!roomId) return json(400, { error: "missing_roomId" }, origin);
-
-  let uid;
-  try {
-    uid = await verifyFirebaseToken(idToken);
-  } catch {
-    return json(401, { error: "invalid_token" }, origin);
-  }
-
-  const userDoc = await firestoreGet(`users/${uid}`, idToken);
-  if (!userDoc) return json(403, { error: "no_user" }, origin);
-
-  const username = fieldString(userDoc, "username");
-  const userRoomId = fieldString(userDoc, "roomId");
-  if (!username || username === "m1") {
-    return json(403, { error: "m1_cannot_trigger" }, origin);
-  }
-  if (userRoomId !== roomId) {
-    return json(403, { error: "room_mismatch" }, origin);
-  }
-
-  const roomDoc = await firestoreGet(`rooms/${encodeURIComponent(roomId)}`);
-  if (!roomDoc) return json(404, { error: "room_not_found" }, origin);
-  if (!fieldBool(roomDoc, "pushNotifyM1")) {
-    return new Response(null, { status: 204, headers: corsHeaders(origin) });
-  }
-
-  const text =
-    String(fieldString(roomDoc, "pushNotifyText") || "").trim() || DEFAULT_TEXT;
-
-  const memberDoc = await firestoreGet(
-    `rooms/${encodeURIComponent(roomId)}/members/m1`
-  );
-  const subs = parsePushSubs(fieldMap(memberDoc, "pushSubs"));
-  if (!subs.length) {
-    return json(200, { sent: 0, reason: "no_subscriptions" }, origin);
-  }
-
-  // Message text only — no app URL / click_action / chat content.
-  const cleanText = text.replace(/https?:\/\/\S+/gi, "").trim() || DEFAULT_TEXT;
-  const payload = JSON.stringify({ title: cleanText });
-
+async function sendToSubs(subs, cleanText) {
+  const payload = JSON.stringify({ title: cleanText, tag: "gitbridge-chat-notify" });
   let sent = 0;
   const stale = [];
   await Promise.all(
@@ -173,8 +115,90 @@ async function handleNotify(req, origin) {
       }
     })
   );
+  return { sent, stale };
+}
 
-  return json(200, { sent, stale }, origin);
+async function handleNotify(req, origin) {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    return json(500, { error: "vapid_not_configured" }, origin);
+  }
+
+  const auth = req.headers.get("Authorization") || "";
+  const idToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!idToken) return json(401, { error: "missing_token" }, origin);
+
+  let body;
+  try {
+    body = await req.json();
+  } catch {
+    return json(400, { error: "invalid_json" }, origin);
+  }
+
+  const roomId = String(body?.roomId || "").trim();
+  const target = String(body?.target || "m1").trim().toLowerCase();
+  if (!roomId) return json(400, { error: "missing_roomId" }, origin);
+  if (target !== "m1" && target !== "m2") {
+    return json(400, { error: "invalid_target" }, origin);
+  }
+
+  let uid;
+  try {
+    uid = await verifyFirebaseToken(idToken);
+  } catch {
+    return json(401, { error: "invalid_token" }, origin);
+  }
+
+  const userDoc = await firestoreGet(`users/${uid}`, idToken);
+  if (!userDoc) return json(403, { error: "no_user" }, origin);
+
+  const username = fieldString(userDoc, "username");
+  const userRoomId = fieldString(userDoc, "roomId");
+  if (!username) return json(403, { error: "no_username" }, origin);
+  if (userRoomId !== roomId) {
+    return json(403, { error: "room_mismatch" }, origin);
+  }
+
+  // Sender must be the other member (not the notify target)
+  if (username === target) {
+    return json(403, { error: "cannot_notify_self" }, origin);
+  }
+
+  const roomDoc = await firestoreGet(`rooms/${encodeURIComponent(roomId)}`);
+  if (!roomDoc) return json(404, { error: "room_not_found" }, origin);
+
+  if (target === "m1") {
+    // Admin gate for m1 only
+    if (!fieldBool(roomDoc, "pushNotifyM1")) {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+  } else {
+    // m2: no admin gate — only member toggle
+    const m2Doc = await firestoreGet(
+      `rooms/${encodeURIComponent(roomId)}/members/m2`
+    );
+    const enabled =
+      m2Doc?.fields?.pushNotifyEnabled?.booleanValue === true ||
+      (m2Doc?.fields?.pushNotifyEnabled == null &&
+        m2Doc?.fields?.pushNotifyApprove?.booleanValue === true);
+    if (!enabled) {
+      return new Response(null, { status: 204, headers: corsHeaders(origin) });
+    }
+  }
+
+  const text =
+    String(fieldString(roomDoc, "pushNotifyText") || "").trim() || DEFAULT_TEXT;
+  const cleanText = text.replace(/https?:\/\/\S+/gi, "").trim() || DEFAULT_TEXT;
+
+  const memberDoc = await firestoreGet(
+    `rooms/${encodeURIComponent(roomId)}/members/${target}`
+  );
+  const subs = parsePushSubs(fieldMap(memberDoc, "pushSubs"));
+  if (!subs.length) {
+    return json(200, { sent: 0, reason: "no_subscriptions", target }, origin);
+  }
+
+  const result = await sendToSubs(subs, cleanText);
+  return json(200, { ...result, target }, origin);
 }
 
 Deno.serve(async (req) => {

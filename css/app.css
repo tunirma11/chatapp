@@ -1207,6 +1207,21 @@ html, body {
   color: #ea4335;
 }
 
+.room-menu-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+}
+
+.room-menu-toggle input[type="checkbox"] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--accent, #25d366);
+  flex-shrink: 0;
+}
+
 /* Pinned bar */
 .pinned-bar {
   flex-shrink: 0;
