@@ -34,7 +34,7 @@ import {
   isRoomFull,
 } from "./rooms.js";
 import { onRouteChange, navigateToAdmin, navigateToHome, parseRoute } from "./router.js";
-import { getPendingMessages, clearRoomSession, getDeviceSession } from "./store.js";
+import { getPendingMessages, clearRoomSession, getDeviceSession, clearOutbox } from "./store.js";
 import {
   enableOfflinePersistence,
   sendMessage,
@@ -184,9 +184,35 @@ function setChatAuthenticated(value) {
   else sessionStorage.removeItem(CHAT_AUTH_KEY);
 }
 
+function clearChatLocalState() {
+  currentMessages = [];
+  pendingLocalMessages = [];
+  olderMessages = [];
+  recentMessages = [];
+  knownMessageIds = new Set();
+  messagesInitialized = false;
+  replyToMessage = null;
+  showReplyPreview(null);
+  resetMessageRenderCache();
+  const container = document.getElementById("messages");
+  if (container) container.innerHTML = "";
+  renderPinnedBar(null);
+  clearOutbox().catch(() => {});
+}
+
+function isChatIdleExpired() {
+  const stored = Number(sessionStorage.getItem("chat-last-active") || 0);
+  const lastActive = Math.max(lastChatActivityAt || 0, stored || 0);
+  if (!lastActive) return false;
+  return Date.now() - lastActive >= CHAT_IDLE_MS;
+}
+
 function resetChatIdleTimer() {
   if (!sessionStarted) return;
   lastChatActivityAt = Date.now();
+  try {
+    sessionStorage.setItem("chat-last-active", String(lastChatActivityAt));
+  } catch (_) {}
   if (chatIdleTimer) clearTimeout(chatIdleTimer);
   chatIdleTimer = setTimeout(() => {
     handleChatIdleLogout().catch(() => {});
@@ -201,13 +227,28 @@ function stopChatIdleWatch() {
 }
 
 async function handleChatIdleLogout() {
-  if (!sessionStarted || !getCurrentUser()) return;
-  if (Date.now() - lastChatActivityAt < CHAT_IDLE_MS) {
-    resetChatIdleTimer();
+  if (!sessionStarted && !isChatAuthenticated()) return;
+  const stored = Number(sessionStorage.getItem("chat-last-active") || lastChatActivityAt || 0);
+  const lastActive = Math.max(lastChatActivityAt || 0, stored || 0);
+  if (lastActive && Date.now() - lastActive < CHAT_IDLE_MS) {
+    lastChatActivityAt = lastActive;
+    if (sessionStarted) resetChatIdleTimer();
     return;
   }
-  showToast("১০ মিনিট নিষ্ক্রিয় থাকায় লগআউট হয়েছে");
+  showToast("৫ মিনিট নিষ্ক্রিয় থাকায় লগআউট হয়েছে");
   await handleLogout(false);
+}
+
+async function enforceIdleOrContinue() {
+  if (!sessionStarted && !isChatAuthenticated()) return false;
+  const stored = Number(sessionStorage.getItem("chat-last-active") || lastChatActivityAt || 0);
+  const lastActive = Math.max(lastChatActivityAt || 0, stored || 0);
+  if (lastActive && Date.now() - lastActive >= CHAT_IDLE_MS) {
+    await handleChatIdleLogout();
+    return false;
+  }
+  if (sessionStarted) resetChatIdleTimer();
+  return true;
 }
 
 async function init() {
@@ -617,6 +658,7 @@ function exitChat() {
   sessionStarted = false;
   partnerUsername = null;
   currentRoomId = null;
+  clearChatLocalState();
   setClearChatVisible(false);
   showView("home");
 }
@@ -624,8 +666,18 @@ function exitChat() {
 async function handleLogout(showMessage = true) {
   playLogout();
   setChatAuthenticated(false);
-  await logout();
-  await clearRoomSession();
+  try {
+    sessionStorage.removeItem("chat-last-active");
+  } catch (_) {}
+  clearChatLocalState();
+  try {
+    await logout();
+  } catch (_) {
+    /* offline: still force local logout */
+  }
+  try {
+    await clearRoomSession();
+  } catch (_) {}
   exitChat();
   navigateToHome();
   const passwordInput = document.getElementById("chatPasswordInput");
@@ -1086,7 +1138,13 @@ async function handleRemoteLogout() {
   try {
     showToast("অন্য ডিভাইসে লগইন হয়েছে — এই ডিভাইস থেকে লগআউট হয়েছে");
     setChatAuthenticated(false);
-    await logout();
+    try {
+      sessionStorage.removeItem("chat-last-active");
+    } catch (_) {}
+    clearChatLocalState();
+    try {
+      await logout();
+    } catch (_) {}
     exitChat();
     if (!isAdminRoute()) navigateToHome();
   } finally {
@@ -1278,13 +1336,30 @@ function initDeviceLifecycle() {
   document.getElementById("messageInput")?.addEventListener("focus", markChatActive, { passive: true });
 
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible" && getCurrentUser() && sessionStarted) {
+    if (document.visibilityState !== "visible") return;
+    if (!getCurrentUser() && !isChatAuthenticated()) return;
+    enforceIdleOrContinue().then((ok) => {
+      if (!ok || !sessionStarted) return;
       sendHeartbeat().then((result) => {
         if (result?.revoked) handleRemoteLogout().catch(() => {});
       });
-      resetChatIdleTimer();
+    });
+  });
+
+  window.addEventListener("focus", () => {
+    if (sessionStarted || isChatAuthenticated()) {
+      enforceIdleOrContinue().catch(() => {});
     }
   });
+
+  // Backup when mobile browsers throttle setTimeout in background
+  setInterval(() => {
+    if (!sessionStarted && !isChatAuthenticated()) return;
+    if (isChatIdleExpired()) {
+      handleChatIdleLogout().catch(() => {});
+    }
+  }, 30 * 1000);
+
   window.addEventListener("pagehide", () => markDeviceOffline());
 }
 

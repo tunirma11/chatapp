@@ -79,10 +79,16 @@ export async function ensureAnonymousAuth() {
 }
 
 export async function logout() {
-  await markDeviceOffline();
+  try {
+    await markDeviceOffline();
+  } catch (_) {}
   currentUserDoc = null;
-  await clearDeviceSession();
-  await signOut(auth);
+  try {
+    await clearDeviceSession();
+  } catch (_) {}
+  try {
+    await signOut(auth);
+  } catch (_) {}
 }
 
 export async function markDeviceOffline() {
