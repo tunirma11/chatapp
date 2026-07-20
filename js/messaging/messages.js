@@ -463,6 +463,13 @@ export async function deleteMessage(roomId, messageId, { forEveryone }) {
   return hideMessageForSelf(roomId, messageId);
 }
 
+/** Primary (m1): permanently delete message doc for both members — no placeholder. */
+export async function removeMessageCompletely(roomId, messageId) {
+  const me = getCurrentUser();
+  if (!me) throw new Error("লগইন করা নেই");
+  await deleteDoc(doc(db, "rooms", roomId, "messages", messageId));
+}
+
 export async function toggleMessagePin(roomId, messageId, pinned) {
   await updateDoc(doc(db, "rooms", roomId, "messages", messageId), {
     pinned: Boolean(pinned),

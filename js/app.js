@@ -45,6 +45,7 @@ import {
   listenToRoomUsers,
   markMessagesAcknowledged,
   deleteMessage,
+  removeMessageCompletely,
   toggleMessagePin,
   toggleReaction,
   clearAllMessages,
@@ -961,6 +962,10 @@ function handleMessageContextMenu(e, msg) {
     items.push({ action: "delete", label: "মুছুন", danger: true });
   }
 
+  if (primary) {
+    items.push({ action: "removeCompletely", label: "সরিয়ে ফেলুন", danger: true });
+  }
+
   items.push({ action: "react", label: "রিঅ্যাকশন" });
 
   showMessageContextMenu(x, y, items, async (action) => {
@@ -996,6 +1001,9 @@ function handleMessageContextMenu(e, msg) {
         if (!primary) {
           showToast("সবার থেকে মেসেজ মুছে ফেলা হয়েছে", "success");
         }
+      } else if (action === "removeCompletely") {
+        if (!primary) return;
+        await removeMessageCompletely(currentRoomId, msg.id);
       } else if (action === "react") {
         await toggleReaction(currentRoomId, msg.id, "👍", msg.reactions || {});
       }

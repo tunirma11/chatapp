@@ -12,6 +12,7 @@ export {
   softDeleteMessage,
   hideMessageForSelf,
   deleteMessage,
+  removeMessageCompletely,
   toggleMessagePin,
   toggleReaction,
   clearAllMessages,

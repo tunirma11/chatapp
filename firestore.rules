@@ -109,7 +109,8 @@ service cloud.firestore {
       }
 
       match /messages/{msgId} {
-        allow read, delete: if isRoomMember(roomId);
+        allow read: if isRoomMember(roomId);
+        allow delete: if isRoomMember(roomId) && myUsername() == "m1";
         allow create: if validMessageCreate(roomId);
         allow update: if isRoomMember(roomId) && validMessageUpdate();
       }
