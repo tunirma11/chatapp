@@ -1,4 +1,4 @@
-const CACHE_NAME = "gitbridge-v61";
+const CACHE_NAME = "gitbridge-v62";
 
 const ASSETS = [
   "./",

@@ -64,6 +64,10 @@ import {
   getM2PushEnabled,
   setM2PushEnabled,
   getM2DeviceNotifyStatus,
+  getNotificationDeniedGuide,
+  NOTIFY_SOFT_ASK,
+  syncM2PushWithBrowserPermission,
+  resubscribeM2PushIfNeeded,
 } from "./push.js";
 import {
   showView,
@@ -656,9 +660,7 @@ function enterChat(user) {
   setM2PushApproveVisible(isM2);
   setM2DevicePermCheckVisible(isM2);
   if (isM2 && currentRoomId) {
-    getM2PushEnabled(currentRoomId)
-      .then((enabled) => setM2PushApproveChecked(enabled))
-      .catch(() => setM2PushApproveChecked(false));
+    syncAndRefreshM2PushToggle(currentRoomId);
   }
   showView("chat");
   if (!sessionStarted) {
@@ -672,6 +674,23 @@ function enterChat(user) {
     }
   } else if (!partnerUsername) {
     showWaitingForPartner();
+  }
+}
+
+/** Sync denied→off, then refresh checkbox; resubscribe if Settings just allowed. */
+async function syncAndRefreshM2PushToggle(roomId) {
+  try {
+    const turnedOff = await syncM2PushWithBrowserPermission(roomId);
+    if (turnedOff) {
+      setM2PushApproveChecked(false);
+      alert(getNotificationDeniedGuide());
+      return;
+    }
+    await resubscribeM2PushIfNeeded(roomId);
+    const enabled = await getM2PushEnabled(roomId);
+    setM2PushApproveChecked(enabled);
+  } catch {
+    setM2PushApproveChecked(false);
   }
 }
 
@@ -1148,6 +1167,19 @@ async function handleM2PushApproveToggle(e) {
   const me = getCurrentUser();
   if (!currentRoomId || !me || isPrimaryMember(me.username)) return;
   const enabled = Boolean(e.target?.checked);
+
+  if (enabled) {
+    if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+      setM2PushApproveChecked(false);
+      alert(getNotificationDeniedGuide());
+      return;
+    }
+    if (!confirm(NOTIFY_SOFT_ASK)) {
+      setM2PushApproveChecked(false);
+      return;
+    }
+  }
+
   try {
     await setM2PushEnabled(currentRoomId, enabled);
     showToast(
@@ -1155,7 +1187,11 @@ async function handleM2PushApproveToggle(e) {
       "success"
     );
   } catch (err) {
-    setM2PushApproveChecked(!enabled);
+    setM2PushApproveChecked(false);
+    if (err?.code === "notify-denied") {
+      alert(err.message || getNotificationDeniedGuide());
+      return;
+    }
     showToast(formatFirebaseError(err));
   }
 }
@@ -1166,6 +1202,7 @@ async function handleM2DevicePermCheck() {
   if (!currentRoomId || !me || isPrimaryMember(me.username)) return;
 
   try {
+    await syncAndRefreshM2PushToggle(currentRoomId);
     const canSend = await validateDeviceSession(currentRoomId, me.username);
     const status = await getM2DeviceNotifyStatus(currentRoomId);
 
@@ -1195,10 +1232,25 @@ async function handleM2DevicePermCheck() {
       : "সারাংশ: নোটিফ আসবে না — উপরের সমস্যা ঠিক করুন";
 
     alert([sendLine, notifLine, subLine, toggleLine, readyLine].join("\n"));
-    showToast(status.ready && canSend ? "ডিভাইস প্রস্তুত" : "ডিভাইসে সমস্যা আছে", status.ready && canSend ? "success" : "danger");
+
+    if (status.permission === "denied") {
+      alert(getNotificationDeniedGuide());
+    }
+
+    showToast(
+      status.ready && canSend ? "ডিভাইস প্রস্তুত" : "ডিভাইসে সমস্যা আছে",
+      status.ready && canSend ? "success" : "danger"
+    );
   } catch (err) {
     showToast(formatFirebaseError(err));
   }
+}
+
+function maybeResubscribeM2PushOnResume() {
+  const me = getCurrentUser();
+  if (!me || !currentRoomId || isPrimaryMember(me.username)) return;
+  if (!sessionStarted) return;
+  syncAndRefreshM2PushToggle(currentRoomId).catch(() => {});
 }
 
 async function handleRetry(localId) {
@@ -1276,6 +1328,8 @@ function startChatSession() {
 
   if (isPrimaryMember(me.username)) {
     initM1Push(currentRoomId, me.username).catch(() => {});
+  } else {
+    syncAndRefreshM2PushToggle(currentRoomId).catch(() => {});
   }
 }
 
@@ -1429,12 +1483,14 @@ function initDeviceLifecycle() {
       sendHeartbeat().then((result) => {
         if (result?.revoked) handleRemoteLogout().catch(() => {});
       });
+      maybeResubscribeM2PushOnResume();
     });
   });
 
   window.addEventListener("focus", () => {
     if (sessionStarted || isChatAuthenticated()) {
       enforceIdleOrContinue().catch(() => {});
+      maybeResubscribeM2PushOnResume();
     }
   });
 

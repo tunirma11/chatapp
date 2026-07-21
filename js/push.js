@@ -25,12 +25,72 @@ function subKey(subscription) {
   }
 }
 
-async function savePushSubscription(roomId, memberId) {
+/** Rough platform hint for settings instructions. */
+export function getNotifyPlatform() {
+  const ua = navigator.userAgent || "";
+  const isIOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS) return "ios";
+  if (/Android/i.test(ua)) return "android";
+  return "desktop";
+}
+
+export function getNotificationPermission() {
+  if (typeof Notification === "undefined") return "unsupported";
+  return Notification.permission;
+}
+
+/** Bengali steps when browser permission is denied (cannot re-prompt). */
+export function getNotificationDeniedGuide() {
+  const platform = getNotifyPlatform();
+  if (platform === "ios") {
+    return [
+      "নোটিফিকেশন ব্লক করা আছে — অ্যাপ থেকে আবার Allow চাওয়া যায় না।",
+      "",
+      "এখন করুন:",
+      "1. Settings → Notifications → GitBridge (বা সাইট নাম) → Allow",
+      "2. Home Screen থেকে অ্যাপ আবার খুলুন",
+      "3. মেনু → নোটিফিকেশন চালু করুন",
+      "",
+      "না পেলে: Settings → Safari → Advanced → Website Data থেকে সাইট মুছে PWA আবার খুলুন।",
+    ].join("\n");
+  }
+  if (platform === "android") {
+    return [
+      "নোটিফিকেশন ব্লক করা আছে — অ্যাপ থেকে আবার Allow চাওয়া যায় না।",
+      "",
+      "এখন করুন:",
+      "1. ঠিকানাবারের লক/ⓘ → Permissions → Notifications → Allow",
+      "   অথবা Settings → Apps → Chrome/অ্যাপ → Notifications → Allow",
+      "2. অ্যাপে ফিরে মেনু → নোটিফিকেশন চালু করুন",
+    ].join("\n");
+  }
+  return [
+    "নোটিফিকেশন ব্লক করা আছে — অ্যাপ থেকে আবার Allow চাওয়া যায় না।",
+    "",
+    "এখন করুন:",
+    "1. ঠিকানাবারের লক/ⓘ → Site settings → Notifications → Allow",
+    "2. পেজ রিফ্রেশ করে মেনু → নোটিফিকেশন চালু করুন",
+  ].join("\n");
+}
+
+export const NOTIFY_SOFT_ASK =
+  "নতুন মেসেজের নোটিফিকেশন চালু করতে চান?\n\nপরের স্ক্রিনে Allow চাপুন। Don't Allow চাপলে সেটিংস ছাড়া আর চালু করা যাবে না।";
+
+async function savePushSubscription(roomId, memberId, { requestIfNeeded = true } = {}) {
   if (!roomId || !memberId) return false;
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
   if (!VAPID_PUBLIC_KEY) return false;
+  if (typeof Notification === "undefined") return false;
 
-  const permission = await Notification.requestPermission();
+  let permission = Notification.permission;
+  if (permission === "denied") return false;
+
+  if (permission !== "granted") {
+    if (!requestIfNeeded) return false;
+    permission = await Notification.requestPermission();
+  }
   if (permission !== "granted") return false;
 
   const registration = await navigator.serviceWorker.ready;
@@ -132,10 +192,24 @@ export async function getM2PushEnabled(roomId) {
   }
 }
 
-/** Enable/disable m2 receiving pushes; on enable also subscribe device. */
+/**
+ * Enable/disable m2 receiving pushes; on enable also subscribe device.
+ * Throws Error with denied guide text when browser permission is blocked.
+ */
 export async function setM2PushEnabled(roomId, enabled) {
   if (!roomId) return;
   const on = Boolean(enabled);
+
+  if (on && typeof Notification !== "undefined" && Notification.permission === "denied") {
+    await updateDoc(doc(db, "rooms", roomId, "members", "m2"), {
+      pushNotifyEnabled: false,
+      pushNotifyApprove: false,
+    }).catch(() => {});
+    const err = new Error(getNotificationDeniedGuide());
+    err.code = "notify-denied";
+    throw err;
+  }
+
   await updateDoc(doc(db, "rooms", roomId, "members", "m2"), {
     pushNotifyEnabled: on,
     pushNotifyApprove: on,
@@ -147,10 +221,58 @@ export async function setM2PushEnabled(roomId, enabled) {
         pushNotifyEnabled: false,
         pushNotifyApprove: false,
       });
+      if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+        const err = new Error(getNotificationDeniedGuide());
+        err.code = "notify-denied";
+        throw err;
+      }
       throw new Error("নোটিফিকেশন অনুমতি দিন অথবা সাপোর্টেড ব্রাউজার ব্যবহার করুন");
     }
   } else {
     await clearPushSubscription(roomId, "m2");
+  }
+}
+
+/**
+ * If OS permission is denied but app toggle is still on → turn off toggle.
+ * Returns true if sync turned the toggle off.
+ */
+export async function syncM2PushWithBrowserPermission(roomId) {
+  if (!roomId) return false;
+  if (typeof Notification === "undefined") return false;
+  if (Notification.permission !== "denied") return false;
+  const enabled = await getM2PushEnabled(roomId);
+  if (!enabled) return false;
+  await updateDoc(doc(db, "rooms", roomId, "members", "m2"), {
+    pushNotifyEnabled: false,
+    pushNotifyApprove: false,
+  });
+  await clearPushSubscription(roomId, "m2").catch(() => {});
+  return true;
+}
+
+/**
+ * After user allows in Settings and returns to the app:
+ * if toggle wants notify + permission granted + no sub → subscribe without re-prompt spam.
+ */
+export async function resubscribeM2PushIfNeeded(roomId) {
+  if (!roomId) return false;
+  if (typeof Notification === "undefined") return false;
+  if (Notification.permission !== "granted") return false;
+  const enabled = await getM2PushEnabled(roomId);
+  if (!enabled) return false;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    const existing = await registration.pushManager.getSubscription();
+    if (existing) {
+      // Refresh Firestore copy in case it was cleared
+      await savePushSubscription(roomId, "m2", { requestIfNeeded: false });
+      return true;
+    }
+    return await savePushSubscription(roomId, "m2", { requestIfNeeded: false });
+  } catch (err) {
+    console.warn("resubscribeM2PushIfNeeded:", err);
+    return false;
   }
 }
 
