@@ -359,7 +359,10 @@ export function renderNotifySettingsSheet(snap) {
 
   const lastPush = document.getElementById("notifyLastPushHint");
   if (lastPush) {
-    if (snap.lastPushOkAt) {
+    if (snap.subscribed && snap.enabledInApp && !snap.storedOnServer) {
+      lastPush.classList.remove("d-none");
+      lastPush.textContent = "সার্ভারে ডিভাইস রেজিস্ট্রি নেই — «স্ট্যাটাস রিফ্রেশ» চাপুন বা টগল অফ→অন করুন";
+    } else if (snap.lastPushOkAt) {
       lastPush.classList.remove("d-none");
       lastPush.textContent = `শেষ সফল পুশ: ${new Date(snap.lastPushOkAt).toLocaleString("bn-BD", {
         dateStyle: "short",

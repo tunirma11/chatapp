@@ -244,10 +244,11 @@ export function timeInputToMinutes(value) {
 export function isQuietHoursActive(quietHours, nowMs = Date.now()) {
   const q = normalizeQuietHours(quietHours);
   if (!q.enabled) return false;
+  // Identical start/end is invalid — do not treat as "all day quiet"
+  if (q.startMin === q.endMin) return false;
   const d = new Date(nowMs);
   const utcMins = d.getUTCHours() * 60 + d.getUTCMinutes();
   const mins = (utcMins + q.tzOffsetMin + 1440 * 3) % 1440;
-  if (q.startMin === q.endMin) return true;
   if (q.startMin < q.endMin) return mins >= q.startMin && mins < q.endMin;
   return mins >= q.startMin || mins < q.endMin;
 }
@@ -352,7 +353,20 @@ export async function getNotifySettingsSnapshot(roomId, username) {
 
   const enabledInApp = await getMemberPushEnabled(roomId, memberId);
   const adminPushM1 = memberId === "m1" ? await getRoomAdminPushM1(roomId) : null;
+
+  // Keep Firestore pushSubs in sync with the local PushManager subscription
+  if (enabledInApp && permission === "granted" && subscribed) {
+    try {
+      await savePushSubscription(roomId, memberId, { requestIfNeeded: false });
+    } catch (err) {
+      console.warn("ensure pushSubs:", err);
+    }
+  }
+
   const devices = await listPushDevices(roomId, memberId, currentKey);
+  const storedOnServer = Boolean(
+    currentKey && devices.some((d) => d.key === currentKey)
+  );
   const quietHours = await getMemberQuietHours(roomId, memberId);
   const quietActiveNow = isQuietHoursActive(quietHours);
   const pushNotifyText = await getRoomPushNotifyText(roomId);
@@ -370,13 +384,14 @@ export async function getNotifySettingsSnapshot(roomId, username) {
   else if (permission === "denied") chip = "blocked";
   else if (!enabledInApp) chip = "app_off";
   else if (memberId === "m1" && adminPushM1 === false) chip = "admin_off";
-  else if (!subscribed) chip = "app_off";
+  else if (!subscribed || !storedOnServer) chip = "app_off";
   else chip = "ready";
 
   const ready =
     chip === "ready" &&
     permission === "granted" &&
     subscribed &&
+    storedOnServer &&
     enabledInApp &&
     (memberId !== "m1" || adminPushM1 === true);
 
@@ -385,6 +400,7 @@ export async function getNotifySettingsSnapshot(roomId, username) {
     supported,
     permission,
     subscribed,
+    storedOnServer,
     enabledInApp,
     adminPushM1,
     ready,
@@ -553,11 +569,11 @@ async function postNotify(roomId, target) {
     },
     body: JSON.stringify({ roomId, target }),
   });
-  if (res.status === 204) return { ok: true, sent: 0 };
+  if (res.status === 204) return { ok: true, sent: 0, reason: "gated" };
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     console.warn("postNotify failed:", target, res.status, text.slice(0, 200));
-    return { ok: false };
+    return { ok: false, status: res.status };
   }
   let body = {};
   try {
@@ -570,6 +586,8 @@ async function postNotify(roomId, target) {
     await updateDoc(doc(db, "rooms", roomId, "members", target), {
       lastPushOkAt: Date.now(),
     }).catch(() => {});
+  } else {
+    console.warn("postNotify sent=0:", target, body?.reason || body);
   }
   return { ok: true, sent, ...body };
 }

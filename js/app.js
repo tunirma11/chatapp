@@ -1202,6 +1202,11 @@ async function handleNotifyQuietChange() {
   const enabled = Boolean(document.getElementById("notifyQuietToggle")?.checked);
   const startMin = timeInputToMinutes(document.getElementById("notifyQuietStart")?.value);
   const endMin = timeInputToMinutes(document.getElementById("notifyQuietEnd")?.value);
+  if (enabled && startMin === endMin) {
+    showToast("শুরু ও শেষ সময় আলাদা দিন", "danger");
+    await refreshNotifySettingsSheet();
+    return;
+  }
   const range = document.getElementById("notifyQuietRange");
   if (range) range.classList.toggle("d-none", !enabled);
   try {

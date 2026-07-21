@@ -1,4 +1,4 @@
-const CACHE_NAME = "gitbridge-v65";
+const CACHE_NAME = "gitbridge-v66";
 
 const ASSETS = [
   "./",
@@ -150,7 +150,8 @@ self.addEventListener("push", (event) => {
 
   const NOTIFY_TAG = "gitbridge-chat-notify";
 
-  // Skip drawer notification when chat is already focused (in-app sound is enough).
+  // Always showNotification — skipping can cause iOS/Safari to stop delivering pushes.
+  // When chat is focused, use silent to avoid double-alert with in-app sound.
   event.waitUntil(
     (async () => {
       const windowClients = await self.clients.matchAll({
@@ -160,7 +161,6 @@ self.addEventListener("push", (event) => {
       const chatFocused = windowClients.some(
         (c) => c.visibilityState === "visible" && c.focused
       );
-      if (chatFocused) return;
 
       const existing = await self.registration.getNotifications({ tag: NOTIFY_TAG });
       for (const n of existing) n.close();
@@ -168,12 +168,12 @@ self.addEventListener("push", (event) => {
       for (const n of legacy) n.close();
 
       await self.registration.showNotification(title, {
-        body: undefined,
+        body: title,
         icon: "./icons/icon-192.png",
         badge: "./icons/icon-192.png",
         tag: NOTIFY_TAG,
         renotify: true,
-        silent: false,
+        silent: chatFocused,
         data: { kind: "chat-text-only" },
       });
     })()
