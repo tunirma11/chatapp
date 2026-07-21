@@ -242,3 +242,7 @@ export function setM2PushApproveChecked(checked) {
   const el = document.getElementById("m2PushApproveToggle");
   if (el) el.checked = Boolean(checked);
 }
+
+export function setM2DevicePermCheckVisible(visible) {
+  document.getElementById("m2DevicePermCheckBtn")?.classList.toggle("d-none", !visible);
+}

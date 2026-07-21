@@ -86,6 +86,36 @@ export async function initM1Push(roomId, username) {
   }
 }
 
+/**
+ * Current-device readiness for receiving message notifications (m2).
+ * Does not request permission — only reports status.
+ */
+export async function getM2DeviceNotifyStatus(roomId) {
+  const supported = Boolean(
+    typeof window !== "undefined" &&
+      "Notification" in window &&
+      "serviceWorker" in navigator &&
+      "PushManager" in window
+  );
+  const permission = supported ? Notification.permission : "unsupported";
+  let subscribed = false;
+  if (supported && permission === "granted") {
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      subscribed = Boolean(await registration.pushManager.getSubscription());
+    } catch {
+      subscribed = false;
+    }
+  }
+  const enabledInApp = roomId ? await getM2PushEnabled(roomId) : false;
+  const ready =
+    supported &&
+    permission === "granted" &&
+    subscribed &&
+    enabledInApp;
+  return { supported, permission, subscribed, enabledInApp, ready };
+}
+
 /** m2 receive toggle: true = m2 wants notifications (independent of admin). */
 export async function getM2PushEnabled(roomId) {
   if (!roomId) return false;

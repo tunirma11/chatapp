@@ -57,7 +57,14 @@ import { listenPresence, setTyping, stopTyping, isPartnerTyping } from "./messag
 import { compressImage, prepareImageForMessage } from "./messaging/media.js";
 import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer } from "./messaging/message-model.js";
 import { initOfflineSync, onConnectionStatusChange, flushOutbox, retryOutboxMessage } from "./offline.js";
-import { initM1Push, notifyM1Device, notifyM2Device, getM2PushEnabled, setM2PushEnabled } from "./push.js";
+import {
+  initM1Push,
+  notifyM1Device,
+  notifyM2Device,
+  getM2PushEnabled,
+  setM2PushEnabled,
+  getM2DeviceNotifyStatus,
+} from "./push.js";
 import {
   showView,
   showToast,
@@ -86,6 +93,7 @@ import {
   setClearChatVisible,
   setM2PushApproveVisible,
   setM2PushApproveChecked,
+  setM2DevicePermCheckVisible,
   scrollToBottom,
   isOwnMessage,
 } from "./ui.js";
@@ -295,6 +303,7 @@ async function init() {
   document.getElementById("clearChatBtn")?.addEventListener("click", handleClearChat);
   document.getElementById("m2PushApproveToggle")?.addEventListener("change", handleM2PushApproveToggle);
   document.getElementById("m2PushApproveRow")?.addEventListener("click", (e) => e.stopPropagation());
+  document.getElementById("m2DevicePermCheckBtn")?.addEventListener("click", handleM2DevicePermCheck);
   document.addEventListener("click", () => toggleRoomMenu(false));
 
   onRouteChange(async (route) => {
@@ -645,6 +654,7 @@ function enterChat(user) {
   setClearChatVisible(isPrimaryMember(user.username));
   const isM2 = !isPrimaryMember(user.username);
   setM2PushApproveVisible(isM2);
+  setM2DevicePermCheckVisible(isM2);
   if (isM2 && currentRoomId) {
     getM2PushEnabled(currentRoomId)
       .then((enabled) => setM2PushApproveChecked(enabled))
@@ -673,6 +683,7 @@ function exitChat() {
   clearChatLocalState();
   setClearChatVisible(false);
   setM2PushApproveVisible(false);
+  setM2DevicePermCheckVisible(false);
   showView("home");
 }
 
@@ -1145,6 +1156,47 @@ async function handleM2PushApproveToggle(e) {
     );
   } catch (err) {
     setM2PushApproveChecked(!enabled);
+    showToast(formatFirebaseError(err));
+  }
+}
+
+async function handleM2DevicePermCheck() {
+  toggleRoomMenu(false);
+  const me = getCurrentUser();
+  if (!currentRoomId || !me || isPrimaryMember(me.username)) return;
+
+  try {
+    const canSend = await validateDeviceSession(currentRoomId, me.username);
+    const status = await getM2DeviceNotifyStatus(currentRoomId);
+
+    const sendLine = canSend
+      ? "মেসেজ পাঠানো: অনুমতি আছে (এই ডিভাইস সক্রিয়)"
+      : "মেসেজ পাঠানো: অনুমতি নেই (অন্য ডিভাইসে সেশন বা সেশন নেই)";
+
+    let notifLine;
+    if (!status.supported) {
+      notifLine = "নোটিফিকেশন: এই ব্রাউজার/ডিভাইসে সাপোর্ট নেই";
+    } else if (status.permission === "granted") {
+      notifLine = "নোটিফিকেশন অনুমতি: মঞ্জুর";
+    } else if (status.permission === "denied") {
+      notifLine = "নোটিফিকেশন অনুমতি: বন্ধ (সেটিংস থেকে চালু করুন)";
+    } else {
+      notifLine = "নোটিফিকেশন অনুমতি: এখনো দেওয়া হয়নি";
+    }
+
+    const subLine = status.subscribed
+      ? "পুশ সাবস্ক্রিপশন: আছে"
+      : "পুশ সাবস্ক্রিপশন: নেই";
+    const toggleLine = status.enabledInApp
+      ? "অ্যাপে নোটিফ টগল: চালু"
+      : "অ্যাপে নোটিফ টগল: বন্ধ";
+    const readyLine = status.ready
+      ? "সারাংশ: m1 মেসেজের নোটিফ এই ডিভাইসে আসতে পারবে"
+      : "সারাংশ: নোটিফ আসবে না — উপরের সমস্যা ঠিক করুন";
+
+    alert([sendLine, notifLine, subLine, toggleLine, readyLine].join("\n"));
+    showToast(status.ready && canSend ? "ডিভাইস প্রস্তুত" : "ডিভাইসে সমস্যা আছে", status.ready && canSend ? "success" : "danger");
+  } catch (err) {
     showToast(formatFirebaseError(err));
   }
 }
