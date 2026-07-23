@@ -502,13 +502,81 @@ export async function showLocalTestNotification(titleText) {
       .trim() || DEFAULT_PUSH_NOTIFY_TEXT;
   const registration = await navigator.serviceWorker.ready;
   await registration.showNotification(title, {
-    body: "সিস্টেম নোটিফ ঠিক আছে",
+    body: title,
     icon: "./icons/icon-192.png",
     badge: "./icons/icon-192.png",
     tag: "gitbridge-test-notify",
     renotify: true,
   });
   return true;
+}
+
+/**
+ * Same path as test notification — used when a new message arrives while app is backgrounded.
+ * Complements remote Web Push (which is required when the page is fully killed).
+ */
+export async function showLocalIncomingNotification(roomId, username) {
+  if (!roomId || !username) return false;
+  if (typeof Notification === "undefined") return false;
+  if (Notification.permission !== "granted") return false;
+  if (document.visibilityState === "visible" && document.hasFocus()) return false;
+
+  const memberId = memberIdForUser(username);
+  const enabled = await getMemberPushEnabled(roomId, memberId);
+  if (!enabled) return false;
+  if (await receiverInQuietHours(roomId, memberId)) return false;
+
+  const title = await getRoomPushNotifyText(roomId);
+  const registration = await navigator.serviceWorker.ready;
+  const existing = await registration.getNotifications({ tag: "gitbridge-chat-notify" });
+  for (const n of existing) n.close();
+  await registration.showNotification(title, {
+    body: title,
+    icon: "./icons/icon-192.png",
+    badge: "./icons/icon-192.png",
+    tag: "gitbridge-chat-notify",
+    renotify: true,
+    silent: false,
+  });
+  return true;
+}
+
+/** Hits Worker /self-test — real Web Push to this device (unlike local showNotification). */
+export async function runRemotePushSelfTest() {
+  const me = auth.currentUser;
+  if (!me || !PUSH_SENDER_URL) {
+    throw new Error("পুশ সার্ভার বা লগইন নেই");
+  }
+  const idToken = await me.getIdToken();
+  const res = await fetch(`${PUSH_SENDER_URL.replace(/\/$/, "")}/self-test`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+    body: "{}",
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const err = new Error(body.error || `self-test failed (${res.status})`);
+    err.code = "remote-test-failed";
+    err.detail = body;
+    throw err;
+  }
+  if (!body.sent) {
+    let msg = `রিমোট পুশ ব্যর্থ (sent=0)`;
+    if (body.hint) msg = body.hint;
+    else if (body.reason === "no_subscriptions") {
+      msg = "সার্ভারে ডিভাইস নেই — নোটিফ টগল অফ→অন করুন";
+    } else if (body.errors?.[0]?.message) {
+      msg += `: ${body.errors[0].message}`;
+    }
+    const err = new Error(msg);
+    err.code = "remote-test-zero";
+    err.detail = body;
+    throw err;
+  }
+  return body;
 }
 
 export async function syncMemberPushWithBrowserPermission(roomId, memberId) {

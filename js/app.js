@@ -67,6 +67,8 @@ import {
   syncMemberPushWithBrowserPermission,
   resubscribeMemberPushIfNeeded,
   showLocalTestNotification,
+  showLocalIncomingNotification,
+  runRemotePushSelfTest,
   keepOnlyThisDevice,
   memberIdForUser,
   setMemberQuietHours,
@@ -946,11 +948,10 @@ function handleInputKeydown(e) {
 /** m2→m1 needs admin on; m1→m2 needs only m2 toggle (no admin). */
 function notifyPartnerAfterSend(me, roomId) {
   if (!me || !roomId) return;
-  if (isPrimaryMember(me.username)) {
-    notifyM2Device(roomId).catch(() => {});
-  } else {
-    notifyM1Device(roomId).catch(() => {});
-  }
+  const run = isPrimaryMember(me.username)
+    ? notifyM2Device(roomId)
+    : notifyM1Device(roomId);
+  run.catch((err) => console.warn("notifyPartnerAfterSend:", err));
 }
 
 async function handleSend() {
@@ -1262,9 +1263,25 @@ async function handleNotifyTest() {
     if (currentRoomId && me) {
       const snap = await getNotifySettingsSnapshot(currentRoomId, me.username);
       title = snap.pushNotifyText;
+      // Ensure Firestore has this device before remote test
+      if (snap.enabledInApp) {
+        await syncNotifyPreferenceQuiet(currentRoomId, me.username);
+      }
     }
     await showLocalTestNotification(title);
-    showToast("টেস্ট নোটিফ পাঠানো হয়েছে", "success");
+    try {
+      const remote = await runRemotePushSelfTest();
+      showToast(
+        `লোকাল ঠিক · রিমোট পুশ OK (sent=${remote.sent})`,
+        "success"
+      );
+    } catch (remoteErr) {
+      console.warn("remote self-test:", remoteErr?.detail || remoteErr);
+      showToast(
+        `লোকাল ঠিক, কিন্তু রিমোট পুশ ব্যর্থ: ${remoteErr?.message || "unknown"}`,
+        "danger"
+      );
+    }
   } catch (err) {
     if (err?.code === "notify-denied") {
       await refreshNotifySettingsSheet();
@@ -1475,7 +1492,11 @@ async function openPartnerChat(partner) {
       const incoming = recent.filter(
         (m) => !knownMessageIds.has(m.id) && m.senderId !== me.username
       );
-      if (incoming.length > 0) playReceive();
+      if (incoming.length > 0) {
+        playReceive();
+        // Same mechanism as "টেস্ট নোটিফ" — works when page is backgrounded but not killed
+        showLocalIncomingNotification(currentRoomId, me.username).catch(() => {});
+      }
       recent.forEach((m) => knownMessageIds.add(m.id));
     }
 

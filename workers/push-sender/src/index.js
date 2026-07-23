@@ -92,10 +92,12 @@ async function sendToSubs(env, subs, cleanText) {
 
   const payload = JSON.stringify({
     title: cleanText,
+    body: cleanText,
     tag: "gitbridge-chat-notify",
   });
   let sent = 0;
   const stale = [];
+  const errors = [];
   await Promise.all(
     subs.map(async (sub) => {
       try {
@@ -106,11 +108,14 @@ async function sendToSubs(env, subs, cleanText) {
         sent += 1;
       } catch (err) {
         const status = err?.statusCode || err?.status;
+        const msg = String(err?.message || err?.body || err).slice(0, 160);
+        errors.push({ status: status || 0, message: msg });
         if (status === 404 || status === 410) stale.push(sub.endpoint);
+        console.error("webpush send failed", status, msg);
       }
     })
   );
-  return { sent, stale };
+  return { sent, stale, errors, subCount: subs.length };
 }
 
 async function handleNotify(req, env, origin) {
@@ -200,6 +205,57 @@ async function handleNotify(req, env, origin) {
   return json(200, { ...result, target }, origin);
 }
 
+/** Authenticated user pushes to their own device — verifies Web Push path (not local showNotification). */
+async function handleSelfTest(req, env, origin) {
+  if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) {
+    return json(500, { error: "vapid_not_configured" }, origin);
+  }
+
+  const projectId = env.FIREBASE_PROJECT_ID || "chatapp-1dfee";
+  const auth = req.headers.get("Authorization") || "";
+  const idToken = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!idToken) return json(401, { error: "missing_token" }, origin);
+
+  let uid;
+  try {
+    uid = await verifyFirebaseToken(idToken, projectId);
+  } catch {
+    return json(401, { error: "invalid_token" }, origin);
+  }
+
+  const userDoc = await firestoreGet(projectId, `users/${uid}`, idToken);
+  if (!userDoc) return json(403, { error: "no_user" }, origin);
+  const username = fieldString(userDoc, "username");
+  const roomId = fieldString(userDoc, "roomId");
+  if (!username || !roomId) return json(403, { error: "no_profile" }, origin);
+
+  const roomDoc = await firestoreGet(
+    projectId,
+    `rooms/${encodeURIComponent(roomId)}`
+  );
+  const text =
+    String(fieldString(roomDoc, "pushNotifyText") || "").trim() || DEFAULT_TEXT;
+  const cleanText =
+    ("[টেস্ট] " + text.replace(/https?:\/\/\S+/gi, "")).trim() || "[টেস্ট] OK";
+
+  const memberDoc = await firestoreGet(
+    projectId,
+    `rooms/${encodeURIComponent(roomId)}/members/${username}`
+  );
+  const subs = parsePushSubs(fieldMap(memberDoc, "pushSubs"));
+  if (!subs.length) {
+    return json(200, {
+      sent: 0,
+      reason: "no_subscriptions",
+      target: username,
+      hint: "অ্যাপে নোটিফ টগল অফ→অন করে আবার চেষ্টা করুন",
+    }, origin);
+  }
+
+  const result = await sendToSubs(env, subs, cleanText);
+  return json(200, { ...result, target: username, selfTest: true }, origin);
+}
+
 export default {
   async fetch(req, env) {
     const origin = req.headers.get("Origin") || "*";
@@ -218,7 +274,12 @@ export default {
         {
           ok: true,
           service: "gitbridge-push-sender",
-          features: { targetM1: true, targetM2: true, m2IgnoresAdmin: true },
+          features: {
+            targetM1: true,
+            targetM2: true,
+            m2IgnoresAdmin: true,
+            selfTest: true,
+          },
         },
         origin
       );
@@ -227,6 +288,15 @@ export default {
     if (req.method === "POST" && url.pathname === "/notify") {
       try {
         return await handleNotify(req, env, origin);
+      } catch (err) {
+        console.error(err);
+        return json(500, { error: "server_error" }, origin);
+      }
+    }
+
+    if (req.method === "POST" && url.pathname === "/self-test") {
+      try {
+        return await handleSelfTest(req, env, origin);
       } catch (err) {
         console.error(err);
         return json(500, { error: "server_error" }, origin);
