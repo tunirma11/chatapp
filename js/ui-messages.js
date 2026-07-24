@@ -293,9 +293,10 @@ function buildMessageRowHtml(msg, index, all, currentUsername, currentUid, partn
 
   if (msg.type === MESSAGE_TYPES.SYSTEM || msg.localOnly) {
     const animClass = animate ? " msg-row-new" : " msg-row-stable";
+    const warnClass = msg.warning || msg.kind === "limit-warning" ? " is-warning" : "";
     return `
       <div class="msg-row system${animClass}" data-msg-id="${escapeHtml(msg.id)}" data-local-only="1">
-        <div class="msg-system-notice" role="status">
+        <div class="msg-system-notice${warnClass}" role="status">
           <span class="msg-system-text">${escapeHtml(msg.text || "")}</span>
           <time class="msg-system-time">${formatTime(ts)}</time>
         </div>

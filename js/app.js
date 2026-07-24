@@ -163,7 +163,7 @@ import {
   playSentConfirm,
 } from "./sounds.js";
 import { formatLastSeen } from "./ui/format.js";
-import { normalizeRoomCode, validateRoomCode, CHAT_IDLE_MS, APP_NAME, TYPING_DEBOUNCE_MS, MESSAGE_DELETE_WINDOW_MS, HEARTBEAT_INTERVAL_MS, ACK_DEBOUNCE_MS } from "./constants.js";
+import { normalizeRoomCode, validateRoomCode, CHAT_IDLE_MS, APP_NAME, TYPING_DEBOUNCE_MS, MESSAGE_DELETE_WINDOW_MS, HEARTBEAT_INTERVAL_MS, ACK_DEBOUNCE_MS, MAX_MESSAGE_LENGTH, MAX_IMAGE_BYTES } from "./constants.js";
 import { formatFirebaseError, formatImageSendError, imageError } from "./errors.js";
 import {
   isBrowserStorageError,
@@ -199,6 +199,9 @@ let galleryOpensCache = [];
 let galleryOpensInitialized = false;
 let galleryImagesCache = [];
 let galleryViewsByImage = {};
+/** @type {Array<{id:string,text:string,createdAt:number}>} */
+let localLimitWarnings = [];
+let messageLimitWarnedAt = 0;
 let sessionStarted = false;
 let prevConnectionStatus = "online";
 let knownMessageIds = new Set();
@@ -254,6 +257,8 @@ function clearChatLocalState() {
   recentMessages = [];
   knownMessageIds = new Set();
   messagesInitialized = false;
+  localLimitWarnings = [];
+  messageLimitWarnedAt = 0;
   replyToMessage = null;
   showReplyPreview(null);
   resetMessageRenderCache();
@@ -1005,6 +1010,59 @@ function galleryOpenNoticesForUi() {
   }));
 }
 
+/** m1-only: local warning bubbles when message/image limits are hit. */
+function limitWarningNoticesForUi() {
+  const me = getCurrentUser();
+  if (!me || !isPrimaryMember(me.username) || !localLimitWarnings.length) return [];
+  return localLimitWarnings.map((w) => ({
+    id: w.id,
+    type: MESSAGE_TYPES.SYSTEM,
+    kind: "limit-warning",
+    text: w.text,
+    senderId: "system",
+    senderName: "system",
+    createdAt: w.createdAt,
+    localOnly: true,
+    warning: true,
+    status: "sent",
+  }));
+}
+
+function pushM1LimitWarning(text) {
+  const me = getCurrentUser();
+  if (!me || !isPrimaryMember(me.username)) return;
+  const msg = String(text || "").trim();
+  if (!msg) return;
+
+  const last = localLimitWarnings[localLimitWarnings.length - 1];
+  if (last && last.text === msg && Date.now() - last.createdAt < 4000) return;
+
+  localLimitWarnings.push({
+    id: `limit-warn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    text: msg,
+    createdAt: Date.now(),
+  });
+  if (localLimitWarnings.length > 12) {
+    localLimitWarnings = localLimitWarnings.slice(-12);
+  }
+  refreshMessageUI({ scrollPolicy: "smooth" });
+}
+
+function checkMessageLengthLimit(rawText, { fromSend = false } = {}) {
+  const len = String(rawText || "").length;
+  if (len < MAX_MESSAGE_LENGTH) {
+    if (len < MAX_MESSAGE_LENGTH - 50) messageLimitWarnedAt = 0;
+    return false;
+  }
+  // Hit max (input maxlength) or send attempted at/over limit
+  if (!fromSend && messageLimitWarnedAt === MAX_MESSAGE_LENGTH) return true;
+  messageLimitWarnedAt = MAX_MESSAGE_LENGTH;
+  pushM1LimitWarning(
+    `মেসেজ লিমিট পূর্ণ — সর্বোচ্চ ${MAX_MESSAGE_LENGTH} অক্ষর। আর লেখা যাবে না।`
+  );
+  return true;
+}
+
 function refreshMessageUI({ scrollPolicy = "if-near" } = {}) {
   if (renderUiRaf) cancelAnimationFrame(renderUiRaf);
   renderUiRaf = requestAnimationFrame(() => {
@@ -1019,10 +1077,10 @@ function refreshMessageUI({ scrollPolicy = "if-near" } = {}) {
       scrollToBottomNext = false;
     }
 
-    const galleryNotices = galleryOpenNoticesForUi();
+    const extraNotices = [...galleryOpenNoticesForUi(), ...limitWarningNoticesForUi()];
     const messagesForUi =
-      galleryNotices.length > 0
-        ? [...currentMessages, ...galleryNotices].sort(
+      extraNotices.length > 0
+        ? [...currentMessages, ...extraNotices].sort(
             (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
           )
         : currentMessages;
@@ -1070,6 +1128,7 @@ function handleInputChange(e) {
   autoResizeTextarea(e.target);
   setSendEnabled(e.target.value.trim().length > 0);
   resetChatIdleTimer();
+  checkMessageLengthLimit(e.target.value);
 
   if (!currentRoomId) return;
   if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
@@ -1247,6 +1306,13 @@ async function handleGalleryImageAdd(file) {
   if (!me) return;
 
   try {
+    if (file.size > MAX_IMAGE_BYTES) {
+      const warn = `ছবি লিমিট অতিক্রম — সর্বোচ্চ ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))} MB। গ্যালারিতে যোগ হয়নি।`;
+      pushM1LimitWarning(warn);
+      playError();
+      showToast(warn);
+      return;
+    }
     setSecretGalleryUploading(true);
     const prepared = await prepareImageForMessage(file);
     await addGalleryImage(currentRoomId, prepared);
@@ -1254,7 +1320,14 @@ async function handleGalleryImageAdd(file) {
     showToast("ছবি যোগ হয়েছে", "success");
   } catch (err) {
     playError();
-    showToast(formatImageSendError(err) || formatFirebaseError(err));
+    const msg = formatImageSendError(err) || formatFirebaseError(err);
+    if (
+      err?.code?.startsWith("image/") ||
+      /সাইজ|কম্প্রেস|বড়|লিমিট|MB|ছবি/i.test(msg)
+    ) {
+      pushM1LimitWarning(`ছবি লিমিট: ${msg}`);
+    }
+    showToast(msg);
   } finally {
     setSecretGalleryUploading(false);
   }
@@ -1280,6 +1353,15 @@ async function handleSend() {
   if (!text || !currentRoomId) return;
   const me = getCurrentUser();
   if (!me) return;
+
+  if (text.length > MAX_MESSAGE_LENGTH) {
+    playError();
+    pushM1LimitWarning(
+      `মেসেজ পাঠানো যায়নি — লিমিট ${MAX_MESSAGE_LENGTH} অক্ষর (এখন ${text.length})।`
+    );
+    showToast(`মেসেজ সর্বোচ্চ ${MAX_MESSAGE_LENGTH} অক্ষর`, "danger");
+    return;
+  }
 
   if (cachedGallerySecretCode && text === cachedGallerySecretCode) {
     clearMessageInput();
@@ -1314,7 +1396,11 @@ async function handleSend() {
     }
   } catch (err) {
     playError();
-    showToast(formatFirebaseError(err));
+    const msg = formatFirebaseError(err);
+    if (/অক্ষর|মেসেজ.*লিমিট|1000/i.test(msg) || err?.message?.includes(String(MAX_MESSAGE_LENGTH))) {
+      pushM1LimitWarning(msg);
+    }
+    showToast(msg);
   }
 }
 
@@ -1329,6 +1415,14 @@ async function handleImageSelect(e) {
   if (!me || !currentRoomId) {
     playError();
     showToast(formatImageSendError(imageError("image/not-ready")));
+    return;
+  }
+
+  if (file.size > MAX_IMAGE_BYTES) {
+    const warn = `ছবি লিমিট অতিক্রম — সর্বোচ্চ ${Math.round(MAX_IMAGE_BYTES / (1024 * 1024))} MB এর ছবি পাঠানো যাবে।`;
+    pushM1LimitWarning(warn);
+    playError();
+    showToast(warn);
     return;
   }
 
@@ -1367,7 +1461,14 @@ async function handleImageSelect(e) {
       refreshMessageUI();
     }
     playError();
-    showToast(formatImageSendError(err));
+    const msg = formatImageSendError(err);
+    if (
+      err?.code?.startsWith("image/") ||
+      /সাইজ|কম্প্রেস|বড়|লিমিট|MB|ছবি/i.test(msg)
+    ) {
+      pushM1LimitWarning(`ছবি লিমিট: ${msg}`);
+    }
+    showToast(msg);
   }
 }
 

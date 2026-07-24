@@ -463,6 +463,13 @@ html, body {
   text-align: center;
 }
 
+.msg-system-notice.is-warning {
+  background: rgba(180, 83, 9, 0.14);
+  color: #7a3e05;
+  border: 1px solid rgba(180, 83, 9, 0.28);
+  font-weight: 600;
+}
+
 .msg-system-text {
   font-weight: 550;
 }
