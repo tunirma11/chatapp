@@ -53,7 +53,20 @@ async function attachDeviceSession(uid, roomId, username, sessionId) {
 export async function enterChatAsMember(roomId, username) {
   if (!roomId || !username) throw new Error("রুম বা সদস্য সঠিক নয়");
 
-  const cred = await signInAnonymously(auth);
+  let cred;
+  try {
+    cred = await signInAnonymously(auth);
+  } catch (err) {
+    const msg = String(err?.message || "");
+    const soft =
+      err?.name === "UnknownError" ||
+      msg === "Internal error." ||
+      msg.includes("Internal error");
+    if (!soft) throw err;
+    await new Promise((r) => setTimeout(r, 400));
+    cred = await signInAnonymously(auth);
+  }
+
   try {
     const sessionId = await claimMemberSession(roomId, username);
     const user = await attachDeviceSession(cred.user.uid, roomId, username, sessionId);
@@ -74,8 +87,21 @@ export async function enterChatAsMember(roomId, username) {
 
 export async function ensureAnonymousAuth() {
   if (auth.currentUser) return auth.currentUser;
-  const cred = await signInAnonymously(auth);
-  return cred.user;
+  try {
+    const cred = await signInAnonymously(auth);
+    return cred.user;
+  } catch (err) {
+    // One soft retry after a short delay (Safari IDB race after PWA open)
+    const msg = String(err?.message || "");
+    const soft =
+      err?.name === "UnknownError" ||
+      msg === "Internal error." ||
+      msg.includes("Internal error");
+    if (!soft) throw err;
+    await new Promise((r) => setTimeout(r, 400));
+    const cred = await signInAnonymously(auth);
+    return cred.user;
+  }
 }
 
 export async function logout() {

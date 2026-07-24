@@ -165,6 +165,13 @@ import {
 import { formatLastSeen } from "./ui/format.js";
 import { normalizeRoomCode, validateRoomCode, CHAT_IDLE_MS, APP_NAME, TYPING_DEBOUNCE_MS, MESSAGE_DELETE_WINDOW_MS, HEARTBEAT_INTERVAL_MS, ACK_DEBOUNCE_MS } from "./constants.js";
 import { formatFirebaseError, formatImageSendError, imageError } from "./errors.js";
+import {
+  isBrowserStorageError,
+  tryAutoRepairStorageAndReload,
+  repairStorageAndReload,
+  clearStorageRepairAttempt,
+  hasPendingStorageRepair,
+} from "./storage-repair.js";
 
 let currentRoomId = null;
 let partnerUsername = null;
@@ -317,6 +324,10 @@ async function init() {
     initOfflineSync();
     onConnectionStatusChange(handleConnectionChange);
     await enableOfflinePersistence();
+    if (hasPendingStorageRepair()) {
+      // Previous auto-repair reload — tip once, then clear after successful login
+      console.info("Storage repair reload complete — try login again");
+    }
   } catch (err) {
     console.error("App init failed:", err);
     showToast("অ্যাপ লোড করা যায়নি — পেজ রিফ্রেশ করুন");
@@ -333,6 +344,18 @@ async function init() {
   document.getElementById("adminMemberList")?.addEventListener("click", handleAdminMemberListClick);
   document.getElementById("adminMemberList")?.addEventListener("submit", handleAdminMemberPasswordSubmit);
   document.getElementById("chatLoginForm")?.addEventListener("submit", handleChatLogin);
+  document.getElementById("chatLoginError")?.addEventListener("click", (e) => {
+    if (e.target?.id !== "storageRepairBtn") return;
+    e.preventDefault();
+    const btn = e.target;
+    btn.disabled = true;
+    btn.textContent = "ঠিক হচ্ছে…";
+    repairStorageAndReload().catch(() => {
+      btn.disabled = false;
+      btn.textContent = "স্টোরেজ ঠিক করুন";
+      location.reload();
+    });
+  });
   document.getElementById("logoutBtn")?.addEventListener("click", handleLogout);
   document.getElementById("soundToggleBtn")?.addEventListener("click", handleSoundToggle);
   document.getElementById("sendBtn")?.addEventListener("click", handleSend);
@@ -711,6 +734,7 @@ async function startChatFromLogin(roomId, password) {
 
   setChatLoginLoading(true);
   isEnteringChat = true;
+  hideChatLoginError();
   try {
     await ensureAnonymousAuth();
     currentRoomId = roomId;
@@ -719,6 +743,7 @@ async function startChatFromLogin(roomId, password) {
     const member = await verifyRoomLogin(roomId, password);
 
     const user = await enterChatAsMember(roomId, member.id);
+    clearStorageRepairAttempt();
     setChatAuthenticated(true);
     enterChat(user);
     playLogin();
@@ -726,6 +751,17 @@ async function startChatFromLogin(roomId, password) {
   } catch (err) {
     console.error("Login failed:", err);
     playError();
+
+    if (isBrowserStorageError(err)) {
+      const repairing = await tryAutoRepairStorageAndReload(err);
+      if (repairing) {
+        showChatLoginError("স্টোরেজ ঠিক করা হচ্ছে — অ্যাপ আবার খুলছে…");
+        return;
+      }
+      showChatLoginError(formatFirebaseError(err), { showStorageRepair: true });
+      return;
+    }
+
     showChatLoginError(formatFirebaseError(err));
   } finally {
     isEnteringChat = false;

@@ -9,9 +9,12 @@ export function formatFirebaseError(err) {
   if (
     message === "Internal error." ||
     message.includes("UnknownError") ||
-    err?.name === "UnknownError"
+    message.includes("Internal error") ||
+    err?.name === "UnknownError" ||
+    err?.name === "InvalidStateError" ||
+    code === "auth/internal-error"
   ) {
-    return "ব্রাউজার স্টোরেজ সমস্যা — সাইট ডেটা/ক্যাশ মুছে পেজ রিফ্রেশ করুন";
+    return "ব্রাউজার স্টোরেজ সমস্যা — নিচের বাটনে «স্টোরেজ ঠিক করুন» চাপুন, অথবা সাইট ডেটা মুছে পেজ রিফ্রেশ করুন";
   }
 
   switch (code) {

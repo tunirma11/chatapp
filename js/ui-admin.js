@@ -124,11 +124,25 @@ export function setChatLoginLoading(loading) {
   document.getElementById("chatLoginSpinner")?.classList.toggle("d-none", !loading);
 }
 
-export function showChatLoginError(message) {
+export function showChatLoginError(message, { showStorageRepair = false } = {}) {
   const el = document.getElementById("chatLoginError");
   if (!el) return;
-  el.textContent = message;
+  const text = String(message || "");
+  if (showStorageRepair) {
+    el.innerHTML = `${escapeHtmlAdmin(text)}
+      <div class="mt-2">
+        <button type="button" class="btn btn-sm btn-outline-danger" id="storageRepairBtn">স্টোরেজ ঠিক করুন</button>
+      </div>`;
+  } else {
+    el.textContent = text;
+  }
   el.classList.remove("d-none");
+}
+
+function escapeHtmlAdmin(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
 export function hideChatLoginError() {
