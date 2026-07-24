@@ -127,7 +127,7 @@ async function deleteCollectionDocs(colRef, { pageSize = 400 } = {}) {
 
 /**
  * Delete room and all nested data: members, messages, gallery, galleryOpens,
- * presence, meta, plus users/{uid} profiles that belong to this room.
+ * galleryViews, presence, meta, plus users/{uid} profiles for this room.
  */
 export async function deleteRoom(roomId) {
   const roomRef = doc(db, "rooms", roomId);
@@ -155,6 +155,9 @@ export async function deleteRoom(roomId) {
   );
   await wipe("গ্যালারি ওপেন লগ", () =>
     deleteCollectionDocs(collection(db, "rooms", roomId, "galleryOpens"))
+  );
+  await wipe("গ্যালারি ভিউ লগ", () =>
+    deleteCollectionDocs(collection(db, "rooms", roomId, "galleryViews"))
   );
   await wipe("সদস্য", () =>
     deleteCollectionDocs(collection(db, "rooms", roomId, "members"))

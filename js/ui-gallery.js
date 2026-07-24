@@ -1,10 +1,13 @@
 import { escapeHtml, showImageLightbox } from "./ui.js";
 import { formatTime } from "./ui/format.js";
 import { canDeleteGalleryImage } from "./messaging/gallery.js";
+import { isPrimaryMember } from "./users.js";
 
 let galleryOpen = false;
 let galleryImages = [];
 let currentUsername = "";
+/** @type {Record<string, Array<{viewedAt:number,clientAt:number}>>} */
+let viewsByImageId = {};
 let handlers = null;
 
 export function isSecretGalleryOpen() {
@@ -40,7 +43,9 @@ export function bindSecretGalleryUi(callbacks) {
     const openBtn = e.target.closest("[data-gallery-open]");
     if (openBtn) {
       const url = openBtn.getAttribute("data-gallery-open");
+      const imageId = openBtn.getAttribute("data-gallery-id") || "";
       if (url) showImageLightbox(url, "gallery");
+      if (imageId) handlers?.onViewImage?.(imageId);
     }
   });
 }
@@ -73,9 +78,15 @@ export function setSecretGalleryUploading(loading) {
   document.getElementById("secretGalleryUploadHint")?.classList.toggle("d-none", !loading);
 }
 
-export function renderSecretGalleryImages(images, username) {
+/**
+ * @param {Array} images
+ * @param {string} username
+ * @param {Record<string, Array>} [viewsMap] m1-only view history keyed by imageId
+ */
+export function renderSecretGalleryImages(images, username, viewsMap) {
   galleryImages = images || [];
   currentUsername = username || "";
+  if (viewsMap !== undefined) viewsByImageId = viewsMap || {};
   const grid = document.getElementById("secretGalleryGrid");
   const empty = document.getElementById("secretGalleryEmpty");
   if (!grid || !empty) return;
@@ -87,31 +98,62 @@ export function renderSecretGalleryImages(images, username) {
   }
 
   empty.classList.add("d-none");
+  const showViews = isPrimaryMember(currentUsername);
+
   grid.innerHTML = galleryImages
     .map((img) => {
       const canDel = canDeleteGalleryImage(img, currentUsername);
       const src = escapeHtml(img.imageUrl || img.imageThumbUrl);
       const full = escapeHtml(img.imageUrl);
+      const id = escapeHtml(img.id);
       const w = Number(img.imageWidth) || 0;
       const h = Number(img.imageHeight) || 0;
       const sizeAttrs = w > 0 && h > 0 ? ` width="${w}" height="${h}"` : "";
+      const viewsHtml = showViews ? renderImageViewMeta(img.id) : "";
       return `
         <article class="secret-gallery-item">
-          <button type="button" class="secret-gallery-thumb" data-gallery-open="${full}" aria-label="বড় করে দেখুন" title="ট্যাপ করে বড় করুন">
+          <button type="button" class="secret-gallery-thumb" data-gallery-open="${full}" data-gallery-id="${id}" aria-label="বড় করে দেখুন" title="ট্যাপ করে বড় করুন">
             <img src="${src}" alt="" loading="lazy" decoding="async"${sizeAttrs}>
             <span class="secret-gallery-expand-hint" aria-hidden="true">
               <svg width="12" height="12" fill="currentColor" viewBox="0 0 16 16"><path d="M1.5 1a.5.5 0 0 0-.5.5v4a.5.5 0 0 1-1 0v-4A1.5 1.5 0 0 1 1.5 0h4a.5.5 0 0 1 0 1zM10 .5a.5.5 0 0 1 .5-.5h4A1.5 1.5 0 0 1 16 1.5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 0-.5-.5h-4a.5.5 0 0 1-.5-.5M.5 10a.5.5 0 0 1 .5.5v4a.5.5 0 0 0 .5.5h4a.5.5 0 0 1 0 1h-4A1.5 1.5 0 0 1 0 14.5v-4a.5.5 0 0 1 .5-.5m15 0a.5.5 0 0 1 .5.5v4a1.5 1.5 0 0 1-1.5 1.5h-4a.5.5 0 0 1 0-1h4a.5.5 0 0 0 .5-.5v-4a.5.5 0 0 1 .5-.5"/></svg>
               বড় করুন
             </span>
           </button>
+          ${viewsHtml}
           ${
             canDel
-              ? `<button type="button" class="secret-gallery-delete" data-gallery-delete="${escapeHtml(img.id)}" aria-label="ছবি মুছুন" title="মুছুন">✕</button>`
+              ? `<button type="button" class="secret-gallery-delete" data-gallery-delete="${id}" aria-label="ছবি মুছুন" title="মুছুন">✕</button>`
               : ""
           }
         </article>`;
     })
     .join("");
+}
+
+function renderImageViewMeta(imageId) {
+  const views = viewsByImageId[imageId] || [];
+  if (!views.length) {
+    return `<div class="secret-gallery-views" role="status">
+      <div class="secret-gallery-views-title">m2 দেখেনি</div>
+    </div>`;
+  }
+
+  const latest = views[0];
+  const latestTs = latest.viewedAt || latest.clientAt || 0;
+  const times = views.slice(0, 8).map((v) => {
+    const ts = v.viewedAt || v.clientAt || 0;
+    return `<li><time datetime="${new Date(ts).toISOString()}">${escapeHtml(formatGalleryActivityTime(ts))}</time></li>`;
+  });
+
+  const more =
+    views.length > 8
+      ? `<li class="secret-gallery-views-more">+${views.length - 8} আরও</li>`
+      : "";
+
+  return `<div class="secret-gallery-views" role="status">
+    <div class="secret-gallery-views-title">m2 দেখেছে · ${views.length} বার · শেষ ${escapeHtml(formatGalleryActivityTime(latestTs))}</div>
+    <ul class="secret-gallery-views-list">${times.join("")}${more}</ul>
+  </div>`;
 }
 
 export function setGalleryActivityMenuVisible(visible) {

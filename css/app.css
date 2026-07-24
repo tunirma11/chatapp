@@ -2153,24 +2153,13 @@ html, body {
 
 .secret-gallery-item {
   position: relative;
+  display: flex;
+  flex-direction: column;
   border-radius: 14px;
   overflow: hidden;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.08);
   animation: secretGalleryItemIn 0.32s ease both;
-  min-height: min(52vw, 280px);
-}
-
-@media (min-width: 480px) {
-  .secret-gallery-item {
-    min-height: 240px;
-  }
-}
-
-@media (min-width: 800px) {
-  .secret-gallery-item {
-    min-height: 280px;
-  }
 }
 
 @keyframes secretGalleryItemIn {
@@ -2189,13 +2178,25 @@ html, body {
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: inherit;
-  height: 100%;
+  min-height: min(52vw, 280px);
+  flex: 1;
   padding: 0.5rem;
   border: none;
   background: transparent;
   cursor: zoom-in;
   position: relative;
+}
+
+@media (min-width: 480px) {
+  .secret-gallery-thumb {
+    min-height: 240px;
+  }
+}
+
+@media (min-width: 800px) {
+  .secret-gallery-thumb {
+    min-height: 280px;
+  }
 }
 
 .secret-gallery-thumb img {
@@ -2258,6 +2259,40 @@ html, body {
 
 .secret-gallery-delete:hover {
   background: rgba(180, 40, 40, 0.85);
+}
+
+.secret-gallery-views {
+  padding: 0.55rem 0.75rem 0.7rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.28);
+}
+
+.secret-gallery-views-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.88);
+  margin-bottom: 0.35rem;
+}
+
+.secret-gallery-views-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.secret-gallery-views-list li {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.secret-gallery-views-more {
+  opacity: 0.75;
 }
 
 .secret-gallery-footer {

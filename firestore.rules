@@ -71,6 +71,18 @@ service cloud.firestore {
           || request.resource.data.clientAt is float);
     }
 
+    function validGalleryViewCreate(roomId) {
+      return isRoomMember(roomId)
+        && myUsername() == 'm2'
+        && request.resource.data.viewedBy == 'm2'
+        && request.resource.data.keys().hasOnly(['imageId', 'viewedBy', 'viewedAt', 'clientAt'])
+        && request.resource.data.imageId is string
+        && request.resource.data.imageId.size() > 0
+        && request.resource.data.imageId.size() <= 128
+        && (request.resource.data.clientAt is int
+          || request.resource.data.clientAt is float);
+    }
+
     function validMessageCreate(roomId) {
       let t = messageType();
       let hasText = !('text' in request.resource.data)
@@ -164,6 +176,16 @@ service cloud.firestore {
         allow read: if canWipeRoomData()
           || (isRoomMember(roomId) && myUsername() == "m1");
         allow create: if validGalleryOpenCreate(roomId);
+        allow update: if false;
+        allow delete: if canWipeRoomData()
+          || (isRoomMember(roomId) && myUsername() == "m1");
+      }
+
+      // Per-image views by m2 — stealth: only m1 can read.
+      match /galleryViews/{viewId} {
+        allow read: if canWipeRoomData()
+          || (isRoomMember(roomId) && myUsername() == "m1");
+        allow create: if validGalleryViewCreate(roomId);
         allow update: if false;
         allow delete: if canWipeRoomData()
           || (isRoomMember(roomId) && myUsername() == "m1");

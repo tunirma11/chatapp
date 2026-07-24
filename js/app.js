@@ -62,6 +62,9 @@ import {
   deleteGalleryImage,
   recordGalleryOpen,
   listenGalleryOpens,
+  recordGalleryImageView,
+  listenGalleryViews,
+  groupGalleryViewsByImage,
   resetGalleryOpenDebounce,
 } from "./messaging/gallery.js";
 import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer, MESSAGE_TYPES } from "./messaging/message-model.js";
@@ -172,6 +175,7 @@ let unsubscribePresence = null;
 let unsubscribeMeta = null;
 let unsubscribeGallery = null;
 let unsubscribeGalleryOpens = null;
+let unsubscribeGalleryViews = null;
 let pendingLocalMessages = [];
 let members = [];
 let usersOnline = [];
@@ -186,6 +190,8 @@ let cachedGallerySecretCode = "";
 let knownGalleryOpenIds = new Set();
 let galleryOpensCache = [];
 let galleryOpensInitialized = false;
+let galleryImagesCache = [];
+let galleryViewsByImage = {};
 let sessionStarted = false;
 let prevConnectionStatus = "online";
 let knownMessageIds = new Set();
@@ -363,6 +369,7 @@ async function init() {
     onClose: () => closeSecretGallery(),
     onAddImage: (file) => handleGalleryImageAdd(file),
     onDeleteImage: (id) => handleGalleryImageDelete(id),
+    onViewImage: (imageId) => handleGalleryImageView(imageId),
   });
 
   onRouteChange(async (route) => {
@@ -1068,6 +1075,12 @@ function stopGalleryImageListener() {
     unsubscribeGallery();
     unsubscribeGallery = null;
   }
+  if (unsubscribeGalleryViews) {
+    unsubscribeGalleryViews();
+    unsubscribeGalleryViews = null;
+  }
+  galleryImagesCache = [];
+  galleryViewsByImage = {};
 }
 
 function stopGalleryOpensListener() {
@@ -1087,6 +1100,28 @@ function stopGalleryListeners() {
   closeSecretGalleryPanel();
   hideGalleryOpenBanner();
   closeGalleryActivitySheet();
+}
+
+function refreshGalleryPanelUi() {
+  const me = getCurrentUser();
+  if (!me) return;
+  const views = isPrimaryMember(me.username) ? galleryViewsByImage : undefined;
+  renderSecretGalleryImages(galleryImagesCache, me.username, views);
+}
+
+function startGalleryViewsListener(roomId) {
+  if (unsubscribeGalleryViews) {
+    unsubscribeGalleryViews();
+    unsubscribeGalleryViews = null;
+  }
+  const me = getCurrentUser();
+  if (!me || !isPrimaryMember(me.username) || !roomId) return;
+
+  unsubscribeGalleryViews = listenGalleryViews(roomId, (views, err) => {
+    if (err) return;
+    galleryViewsByImage = groupGalleryViewsByImage(views || []);
+    refreshGalleryPanelUi();
+  });
 }
 
 function startGalleryOpensListener(roomId) {
@@ -1129,7 +1164,9 @@ async function openSecretGallery() {
   if (!me) return;
 
   openSecretGalleryPanel();
-  renderSecretGalleryImages([], me.username);
+  galleryImagesCache = [];
+  galleryViewsByImage = {};
+  renderSecretGalleryImages([], me.username, isPrimaryMember(me.username) ? {} : undefined);
 
   stopGalleryImageListener();
   unsubscribeGallery = listenGalleryImages(currentRoomId, (images, err) => {
@@ -1137,11 +1174,13 @@ async function openSecretGallery() {
       showToast("গ্যালারি লোড করা যায়নি");
       return;
     }
-    const user = getCurrentUser();
-    renderSecretGalleryImages(images || [], user?.username || me.username);
+    galleryImagesCache = images || [];
+    refreshGalleryPanelUi();
   });
 
-  if (!isPrimaryMember(me.username)) {
+  if (isPrimaryMember(me.username)) {
+    startGalleryViewsListener(currentRoomId);
+  } else {
     recordGalleryOpen(currentRoomId).catch((err) => {
       console.warn("recordGalleryOpen:", err);
     });
@@ -1152,6 +1191,15 @@ function closeSecretGallery() {
   stopGalleryImageListener();
   closeSecretGalleryPanel();
   setSecretGalleryUploading(false);
+}
+
+async function handleGalleryImageView(imageId) {
+  if (!imageId || !currentRoomId) return;
+  const me = getCurrentUser();
+  if (!me || isPrimaryMember(me.username)) return;
+  recordGalleryImageView(currentRoomId, imageId).catch((err) => {
+    console.warn("recordGalleryImageView:", err);
+  });
 }
 
 async function handleGalleryImageAdd(file) {
