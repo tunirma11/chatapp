@@ -31,10 +31,12 @@ import {
   MESSAGE_TYPES,
   normalizeMessage,
   buildMessagePayload,
-  isMessageVisible,
   isMessageDeletedForViewer,
+  shouldShowMessageInChat,
+  isEphemeralGalleryImageHiddenFromChat,
 } from "./message-model.js";
 import { extractFirstUrl, buildBasicLinkPreview } from "./links.js";
+import { addGalleryImage } from "./gallery.js";
 
 let persistenceEnabled = false;
 
@@ -109,6 +111,7 @@ function buildPayloadFromInput(me, text, options = {}) {
     payload.imageThumbUrl = options.imageThumbUrl || options.imageUrl;
     payload.imageWidth = options.imageWidth || null;
     payload.imageHeight = options.imageHeight || null;
+    if (options.ephemeralToGallery) payload.ephemeralToGallery = true;
   } else if (type === MESSAGE_TYPES.LINK && url) {
     payload.type = MESSAGE_TYPES.LINK;
     payload.linkUrl = url;
@@ -195,14 +198,31 @@ export async function sendMessage(roomId, text, options = {}) {
 }
 
 export async function sendImageMessage(roomId, imageUrl, meta = {}, caption = "") {
-  return sendMessage(roomId, caption, {
+  const result = await sendMessage(roomId, caption, {
     type: MESSAGE_TYPES.IMAGE,
     imageUrl,
     imageThumbUrl: imageUrl,
     imageWidth: meta.width,
     imageHeight: meta.height,
     replyTo: meta.replyTo,
+    ephemeralToGallery: true,
   });
+
+  // Mirror into room gallery (chat copy hides after partner sees it).
+  if (result && result.status === "sent" && imageUrl) {
+    try {
+      await addGalleryImage(roomId, {
+        imageUrl,
+        imageThumbUrl: imageUrl,
+        width: meta.width,
+        height: meta.height,
+      });
+    } catch (err) {
+      console.warn("addGalleryImage after chat send:", err);
+    }
+  }
+
+  return result;
 }
 
 export async function retryOutboxMessage(item) {
@@ -238,7 +258,7 @@ export function listenToRecentMessages(roomId, callback, clearedAt = 0) {
     (snap) => {
       const recent = snap.docs
         .map((d) => normalizeMessage({ id: d.id, ...d.data() }))
-        .filter((m) => isMessageVisible(m, clearedAt))
+        .filter((m) => shouldShowMessageInChat(m, clearedAt))
         .reverse();
       callback({
         recent,
@@ -271,7 +291,7 @@ export async function fetchOlderMessages(roomId, oldestMessage, clearedAt = 0) {
     const snap = await getDocs(q);
     const messages = snap.docs
       .map((d) => normalizeMessage({ id: d.id, ...d.data() }))
-      .filter((m) => isMessageVisible(m, clearedAt))
+      .filter((m) => shouldShowMessageInChat(m, clearedAt))
       .reverse();
     return {
       messages,
@@ -290,7 +310,7 @@ export async function fetchOlderMessages(roomId, oldestMessage, clearedAt = 0) {
   const snap = await getDocs(q);
   const messages = snap.docs
     .map((d) => normalizeMessage({ id: d.id, ...d.data() }))
-    .filter((m) => isMessageVisible(m, clearedAt))
+    .filter((m) => shouldShowMessageInChat(m, clearedAt))
     .reverse();
 
   return {
@@ -507,6 +527,7 @@ export function searchMessages(messages, queryText, viewerUsername = null) {
   const q = String(queryText || "").trim().toLowerCase();
   if (!q) return [];
   return messages.filter((m) => {
+    if (isEphemeralGalleryImageHiddenFromChat(m)) return false;
     if (viewerUsername ? isMessageDeletedForViewer(m, viewerUsername) : m.deletedAt) return false;
     const text = (m.text || "").toLowerCase();
     const link = (m.linkUrl || "").toLowerCase();

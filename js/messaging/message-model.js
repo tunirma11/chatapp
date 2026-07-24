@@ -59,6 +59,7 @@ export function normalizeMessage(doc) {
     pinned: data.pinned === true,
     pinnedAt: normalizeTimestamp(data.pinnedAt) || null,
     imageStripped: data.imageStripped === true,
+    ephemeralToGallery: data.ephemeralToGallery === true,
     localId: data.localId || null,
     status: data.status || "sent",
   };
@@ -100,6 +101,24 @@ export function isMessageVisible(msg, clearedAt = 0) {
   if (isMessageDeleted(msg)) return true;
   if (!clearedAt) return true;
   return (msg.createdAt || 0) > clearedAt;
+}
+
+/**
+ * Chat-sent images that mirror into gallery: hide from chat once the partner has seen them.
+ * They remain in the room gallery.
+ */
+export function isEphemeralGalleryImageHiddenFromChat(msg) {
+  if (!msg?.ephemeralToGallery) return false;
+  if (msg.type !== MESSAGE_TYPES.IMAGE && !msg.imageUrl) return false;
+  const readBy = msg.readBy || {};
+  return Object.keys(readBy).some((u) => u && u !== msg.senderId);
+}
+
+/** Whether the message should appear in the chat message list. */
+export function shouldShowMessageInChat(msg, clearedAt = 0) {
+  if (!msg) return false;
+  if (isEphemeralGalleryImageHiddenFromChat(msg)) return false;
+  return isMessageVisible(msg, clearedAt);
 }
 
 /** Label shown in place of a deleted/hidden message bubble. */

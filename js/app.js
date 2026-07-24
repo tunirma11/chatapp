@@ -67,7 +67,7 @@ import {
   groupGalleryViewsByImage,
   resetGalleryOpenDebounce,
 } from "./messaging/gallery.js";
-import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer, MESSAGE_TYPES } from "./messaging/message-model.js";
+import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer, isEphemeralGalleryImageHiddenFromChat, MESSAGE_TYPES } from "./messaging/message-model.js";
 import { initOfflineSync, onConnectionStatusChange, flushOutbox, retryOutboxMessage } from "./offline.js";
 import {
   initM1Push,
@@ -857,7 +857,10 @@ function refreshPartnerHeader() {
 function getPinnedMessage() {
   const me = getCurrentUser();
   const pinned = currentMessages.filter(
-    (m) => m.pinned && !isMessageDeletedForViewer(m, me?.username)
+    (m) =>
+      m.pinned &&
+      !isMessageDeletedForViewer(m, me?.username) &&
+      !isEphemeralGalleryImageHiddenFromChat(m)
   );
   if (!pinned.length) return null;
   return pinned.sort((a, b) => (b.pinnedAt || b.createdAt) - (a.pinnedAt || a.createdAt))[0];
