@@ -290,9 +290,25 @@ function buildMessagesHtml(all, startIndex, currentUsername, currentUid, partner
 }
 function buildMessageRowHtml(msg, index, all, currentUsername, currentUid, partner, partnerUsername, animate, isIncomingNew = false) {
   const ts = msg.createdAt?.toMillis?.() ?? msg.createdAt ?? Date.now();
+
+  if (msg.type === MESSAGE_TYPES.SYSTEM || msg.localOnly) {
+    const animClass = animate ? " msg-row-new" : " msg-row-stable";
+    return `
+      <div class="msg-row system${animClass}" data-msg-id="${escapeHtml(msg.id)}" data-local-only="1">
+        <div class="msg-system-notice" role="status">
+          <span class="msg-system-text">${escapeHtml(msg.text || "")}</span>
+          <time class="msg-system-time">${formatTime(ts)}</time>
+        </div>
+      </div>`;
+  }
+
   const isOwn = isOwnMessage(msg, currentUsername, currentUid);
-  const prevOwn = index > 0 ? isOwnMessage(all[index - 1], currentUsername, currentUid) : null;
-  const nextOwn = index < all.length - 1 ? isOwnMessage(all[index + 1], currentUsername, currentUid) : null;
+  const prev = index > 0 ? all[index - 1] : null;
+  const next = index < all.length - 1 ? all[index + 1] : null;
+  const prevIsNotice = Boolean(prev && (prev.type === MESSAGE_TYPES.SYSTEM || prev.localOnly));
+  const nextIsNotice = Boolean(next && (next.type === MESSAGE_TYPES.SYSTEM || next.localOnly));
+  const prevOwn = prev && !prevIsNotice ? isOwnMessage(prev, currentUsername, currentUid) : null;
+  const nextOwn = next && !nextIsNotice ? isOwnMessage(next, currentUsername, currentUid) : null;
   const isFirst = prevOwn !== isOwn;
   const isLast = nextOwn !== isOwn;
   const rowClass = isOwn ? "own" : "other";

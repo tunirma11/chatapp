@@ -43,12 +43,24 @@ export async function createRoom(label, rawRoomCode) {
     status: "active",
     pushNotifyM1: false,
     pushNotifyText: DEFAULT_PUSH_NOTIFY_TEXT,
+    gallerySecretCode: "",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
     lastActivityAt: serverTimestamp(),
   });
 
   return roomId;
+}
+
+const MAX_GALLERY_SECRET_LEN = 64;
+
+export async function setRoomGallerySecret(roomId, code) {
+  const trimmed = String(code ?? "").trim().slice(0, MAX_GALLERY_SECRET_LEN);
+  await updateDoc(doc(db, "rooms", roomId), {
+    gallerySecretCode: trimmed,
+    updatedAt: serverTimestamp(),
+  });
+  return trimmed;
 }
 
 export async function getRoom(roomId) {
@@ -114,8 +126,8 @@ async function deleteCollectionDocs(colRef, { pageSize = 400 } = {}) {
 }
 
 /**
- * Delete room and all nested data: members, messages, presence, meta,
- * plus users/{uid} profiles that belong to this room.
+ * Delete room and all nested data: members, messages, gallery, galleryOpens,
+ * presence, meta, plus users/{uid} profiles that belong to this room.
  */
 export async function deleteRoom(roomId) {
   const roomRef = doc(db, "rooms", roomId);
@@ -137,6 +149,12 @@ export async function deleteRoom(roomId) {
 
   await wipe("মেসেজ", () =>
     deleteCollectionDocs(collection(db, "rooms", roomId, "messages"))
+  );
+  await wipe("গ্যালারি", () =>
+    deleteCollectionDocs(collection(db, "rooms", roomId, "gallery"))
+  );
+  await wipe("গ্যালারি ওপেন লগ", () =>
+    deleteCollectionDocs(collection(db, "rooms", roomId, "galleryOpens"))
   );
   await wipe("সদস্য", () =>
     deleteCollectionDocs(collection(db, "rooms", roomId, "members"))

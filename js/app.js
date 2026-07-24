@@ -30,6 +30,7 @@ import {
   listRooms,
   setRoomStatus,
   setRoomPushNotify,
+  setRoomGallerySecret,
   deleteRoom,
   isRoomFull,
 } from "./rooms.js";
@@ -55,7 +56,15 @@ import {
 } from "./chat.js";
 import { listenPresence, setTyping, stopTyping, isPartnerTyping } from "./messaging/presence.js";
 import { compressImage, prepareImageForMessage } from "./messaging/media.js";
-import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer } from "./messaging/message-model.js";
+import {
+  listenGalleryImages,
+  addGalleryImage,
+  deleteGalleryImage,
+  recordGalleryOpen,
+  listenGalleryOpens,
+  resetGalleryOpenDebounce,
+} from "./messaging/gallery.js";
+import { getMessagePreviewText, isMessageHiddenForUser, isMessageDeletedForViewer, MESSAGE_TYPES } from "./messaging/message-model.js";
 import { initOfflineSync, onConnectionStatusChange, flushOutbox, retryOutboxMessage } from "./offline.js";
 import {
   initM1Push,
@@ -122,6 +131,19 @@ import {
   showAdminLogin,
 } from "./ui-admin.js";
 import {
+  bindSecretGalleryUi,
+  openSecretGalleryPanel,
+  closeSecretGalleryPanel,
+  renderSecretGalleryImages,
+  setSecretGalleryUploading,
+  setGalleryActivityMenuVisible,
+  renderGalleryActivityList,
+  showGalleryOpenBanner,
+  hideGalleryOpenBanner,
+  openGalleryActivitySheet,
+  closeGalleryActivitySheet,
+} from "./ui-gallery.js";
+import {
   bindSoundUnlock,
   loadSoundPreference,
   saveSoundPreference,
@@ -148,6 +170,8 @@ let unsubscribeUsers = null;
 let unsubscribeMembers = null;
 let unsubscribePresence = null;
 let unsubscribeMeta = null;
+let unsubscribeGallery = null;
+let unsubscribeGalleryOpens = null;
 let pendingLocalMessages = [];
 let members = [];
 let usersOnline = [];
@@ -158,6 +182,10 @@ let typingDebounceTimer = null;
 let deferredInstallPrompt = null;
 let heartbeatTimer = null;
 let isEnteringChat = false;
+let cachedGallerySecretCode = "";
+let knownGalleryOpenIds = new Set();
+let galleryOpensCache = [];
+let galleryOpensInitialized = false;
 let sessionStarted = false;
 let prevConnectionStatus = "online";
 let knownMessageIds = new Set();
@@ -295,6 +323,7 @@ async function init() {
   document.getElementById("adminToggleRoomBtn")?.addEventListener("click", handleAdminToggleRoom);
   document.getElementById("adminDeleteRoomBtn")?.addEventListener("click", handleAdminDeleteRoom);
   document.getElementById("adminPushNotifyForm")?.addEventListener("submit", handleAdminPushNotifySave);
+  document.getElementById("adminGallerySecretForm")?.addEventListener("submit", handleAdminGallerySecretSave);
   document.getElementById("adminMemberList")?.addEventListener("click", handleAdminMemberListClick);
   document.getElementById("adminMemberList")?.addEventListener("submit", handleAdminMemberPasswordSubmit);
   document.getElementById("chatLoginForm")?.addEventListener("submit", handleChatLogin);
@@ -312,6 +341,12 @@ async function init() {
   });
   document.getElementById("searchMessagesBtn")?.addEventListener("click", handleOpenSearch);
   document.getElementById("clearChatBtn")?.addEventListener("click", handleClearChat);
+  document.getElementById("galleryActivityBtn")?.addEventListener("click", () => {
+    toggleRoomMenu(false);
+    openGalleryActivitySheet();
+  });
+  document.getElementById("galleryActivityCloseBtn")?.addEventListener("click", () => closeGalleryActivitySheet());
+  document.getElementById("galleryActivityBackdrop")?.addEventListener("click", () => closeGalleryActivitySheet());
   document.getElementById("notifySettingsBtn")?.addEventListener("click", handleOpenNotifySettings);
   document.getElementById("notifySettingsCloseBtn")?.addEventListener("click", () => closeNotifySettingsSheet());
   document.getElementById("notifySettingsBackdrop")?.addEventListener("click", () => closeNotifySettingsSheet());
@@ -323,6 +358,12 @@ async function init() {
   document.getElementById("notifyRefreshBtn")?.addEventListener("click", () => refreshNotifySettingsSheet());
   document.getElementById("notifyKeepThisDeviceBtn")?.addEventListener("click", handleKeepOnlyThisDevice);
   document.addEventListener("click", () => toggleRoomMenu(false));
+
+  bindSecretGalleryUi({
+    onClose: () => closeSecretGallery(),
+    onAddImage: (file) => handleGalleryImageAdd(file),
+    onDeleteImage: (id) => handleGalleryImageDelete(id),
+  });
 
   onRouteChange(async (route) => {
     currentRouteView = route.view;
@@ -605,6 +646,26 @@ async function handleAdminPushNotifySave(e) {
   }
 }
 
+async function handleAdminGallerySecretSave(e) {
+  e.preventDefault();
+  const roomId = getSelectedAdminRoomId();
+  if (!roomId) return;
+
+  const code = document.getElementById("adminGallerySecretCode")?.value || "";
+
+  try {
+    await ensureAnonymousAuth();
+    await setRoomGallerySecret(roomId, code);
+    await refreshAdminRooms();
+    await loadAdminRoomDetail(roomId);
+    playTap();
+    showToast("গ্যালারি কোড সেভ হয়েছে", "success");
+  } catch (err) {
+    playError();
+    showToast(formatFirebaseError(err));
+  }
+}
+
 async function handleAdminDeleteRoom() {
   const roomId = getSelectedAdminRoomId();
   if (!roomId) return;
@@ -670,6 +731,7 @@ async function startChatFromLogin(roomId, password) {
 function enterChat(user) {
   if (isAdminRoute()) return;
   setClearChatVisible(isPrimaryMember(user.username));
+  setGalleryActivityMenuVisible(isPrimaryMember(user.username));
   setNotifySettingsMenuVisible(true);
   if (currentRoomId) {
     syncNotifyPreferenceQuiet(currentRoomId, user.username)
@@ -703,10 +765,15 @@ function exitChat() {
   sessionStarted = false;
   partnerUsername = null;
   currentRoomId = null;
+  cachedGallerySecretCode = "";
   clearChatLocalState();
   setClearChatVisible(false);
+  setGalleryActivityMenuVisible(false);
   setNotifySettingsMenuVisible(false);
   closeNotifySettingsSheet();
+  closeGalleryActivitySheet();
+  hideGalleryOpenBanner();
+  closeSecretGalleryPanel();
   updateNotifyBellState("off");
   showView("home");
 }
@@ -872,6 +939,26 @@ function scheduleAutoLoadHistory() {
   autoLoadAllHistory().catch(() => {});
 }
 
+function galleryOpenNoticesForUi() {
+  const me = getCurrentUser();
+  if (!me || !isPrimaryMember(me.username) || !galleryOpensCache.length) return [];
+
+  const partner = partnerUsername ? getMemberById(partnerUsername) : null;
+  const who = partner?.name || partnerUsername || "m2";
+
+  return galleryOpensCache.map((ev) => ({
+    id: `gallery-open-${ev.id}`,
+    type: MESSAGE_TYPES.SYSTEM,
+    kind: "gallery-open",
+    text: `${who} just opened the gallery`,
+    senderId: "system",
+    senderName: "system",
+    createdAt: ev.openedAt || ev.clientAt || 0,
+    localOnly: true,
+    status: "sent",
+  }));
+}
+
 function refreshMessageUI({ scrollPolicy = "if-near" } = {}) {
   if (renderUiRaf) cancelAnimationFrame(renderUiRaf);
   renderUiRaf = requestAnimationFrame(() => {
@@ -886,14 +973,22 @@ function refreshMessageUI({ scrollPolicy = "if-near" } = {}) {
       scrollToBottomNext = false;
     }
 
+    const galleryNotices = galleryOpenNoticesForUi();
+    const messagesForUi =
+      galleryNotices.length > 0
+        ? [...currentMessages, ...galleryNotices].sort(
+            (a, b) => (a.createdAt || 0) - (b.createdAt || 0)
+          )
+        : currentMessages;
+
     const allMsgs = [
-      ...currentMessages,
+      ...messagesForUi,
       ...pendingLocalMessages.filter(
-        (p) => !currentMessages.some((m) => m.localId && m.localId === p.localId)
+        (p) => !messagesForUi.some((m) => m.localId && m.localId === p.localId)
       ),
     ];
 
-    renderMessages(currentMessages, me.username, me.uid, pendingLocalMessages, {
+    renderMessages(messagesForUi, me.username, me.uid, pendingLocalMessages, {
       onRetry: handleRetry,
       onContextMenu: handleMessageContextMenu,
       onReaction: handleReactionToggle,
@@ -954,12 +1049,162 @@ function notifyPartnerAfterSend(me, roomId) {
   run.catch((err) => console.warn("notifyPartnerAfterSend:", err));
 }
 
+async function loadGallerySecretCache(roomId) {
+  if (!roomId) {
+    cachedGallerySecretCode = "";
+    return;
+  }
+  try {
+    const room = await getRoom(roomId);
+    cachedGallerySecretCode = String(room?.gallerySecretCode || "").trim();
+  } catch (err) {
+    console.warn("loadGallerySecretCache:", err);
+    cachedGallerySecretCode = "";
+  }
+}
+
+function stopGalleryImageListener() {
+  if (unsubscribeGallery) {
+    unsubscribeGallery();
+    unsubscribeGallery = null;
+  }
+}
+
+function stopGalleryOpensListener() {
+  if (unsubscribeGalleryOpens) {
+    unsubscribeGalleryOpens();
+    unsubscribeGalleryOpens = null;
+  }
+  knownGalleryOpenIds = new Set();
+  galleryOpensCache = [];
+  galleryOpensInitialized = false;
+  renderGalleryActivityList([]);
+}
+
+function stopGalleryListeners() {
+  stopGalleryImageListener();
+  stopGalleryOpensListener();
+  closeSecretGalleryPanel();
+  hideGalleryOpenBanner();
+  closeGalleryActivitySheet();
+}
+
+function startGalleryOpensListener(roomId) {
+  stopGalleryOpensListener();
+  if (!roomId) return;
+  const me = getCurrentUser();
+  if (!me || !isPrimaryMember(me.username)) return;
+
+  unsubscribeGalleryOpens = listenGalleryOpens(roomId, (opens, err) => {
+    if (err) return;
+    galleryOpensCache = opens || [];
+    renderGalleryActivityList(galleryOpensCache);
+
+    if (!galleryOpensInitialized) {
+      knownGalleryOpenIds = new Set(galleryOpensCache.map((o) => o.id));
+      galleryOpensInitialized = true;
+      refreshMessageUI({ scrollPolicy: "if-near" });
+      return;
+    }
+
+    let hasNew = false;
+    for (const ev of galleryOpensCache) {
+      if (knownGalleryOpenIds.has(ev.id)) continue;
+      knownGalleryOpenIds.add(ev.id);
+      hasNew = true;
+    }
+
+    refreshMessageUI({ scrollPolicy: hasNew ? "smooth" : "if-near" });
+    if (hasNew) {
+      playTap();
+      const newest = galleryOpensCache[0];
+      if (newest) showGalleryOpenBanner(newest.openedAt || newest.clientAt);
+    }
+  });
+}
+
+async function openSecretGallery() {
+  if (!currentRoomId) return;
+  const me = getCurrentUser();
+  if (!me) return;
+
+  openSecretGalleryPanel();
+  renderSecretGalleryImages([], me.username);
+
+  stopGalleryImageListener();
+  unsubscribeGallery = listenGalleryImages(currentRoomId, (images, err) => {
+    if (err) {
+      showToast("গ্যালারি লোড করা যায়নি");
+      return;
+    }
+    const user = getCurrentUser();
+    renderSecretGalleryImages(images || [], user?.username || me.username);
+  });
+
+  if (!isPrimaryMember(me.username)) {
+    recordGalleryOpen(currentRoomId).catch((err) => {
+      console.warn("recordGalleryOpen:", err);
+    });
+  }
+}
+
+function closeSecretGallery() {
+  stopGalleryImageListener();
+  closeSecretGalleryPanel();
+  setSecretGalleryUploading(false);
+}
+
+async function handleGalleryImageAdd(file) {
+  if (!file || !currentRoomId) return;
+  const me = getCurrentUser();
+  if (!me) return;
+
+  try {
+    setSecretGalleryUploading(true);
+    const prepared = await prepareImageForMessage(file);
+    await addGalleryImage(currentRoomId, prepared);
+    playTap();
+    showToast("ছবি যোগ হয়েছে", "success");
+  } catch (err) {
+    playError();
+    showToast(formatImageSendError(err) || formatFirebaseError(err));
+  } finally {
+    setSecretGalleryUploading(false);
+  }
+}
+
+async function handleGalleryImageDelete(imageId) {
+  if (!imageId || !currentRoomId) return;
+  if (!confirm("এই ছবি মুছে ফেলবেন?")) return;
+
+  try {
+    await deleteGalleryImage(currentRoomId, imageId);
+    playTap();
+    showToast("ছবি মুছে ফেলা হয়েছে", "success");
+  } catch (err) {
+    playError();
+    showToast(formatFirebaseError(err));
+  }
+}
+
 async function handleSend() {
   const input = document.getElementById("messageInput");
   const text = input.value.trim();
-  if (!text || !partnerUsername || !currentRoomId) return;
+  if (!text || !currentRoomId) return;
   const me = getCurrentUser();
   if (!me) return;
+
+  if (cachedGallerySecretCode && text === cachedGallerySecretCode) {
+    clearMessageInput();
+    setSendEnabled(false);
+    playTap();
+    resetChatIdleTimer();
+    stopTyping(currentRoomId);
+    await openSecretGallery();
+    return;
+  }
+
+  if (!partnerUsername) return;
 
   const replyTo = buildReplyPayload(replyToMessage);
   clearMessageInput();
@@ -1042,6 +1287,7 @@ async function handleImageSelect(e) {
 function handleMessageContextMenu(e, msg) {
   const me = getCurrentUser();
   if (!me || !currentRoomId) return;
+  if (!msg || msg.localOnly || msg.type === MESSAGE_TYPES.SYSTEM) return;
 
   const x = e.clientX || e.touches?.[0]?.clientX || 0;
   const y = e.clientY || e.touches?.[0]?.clientY || 0;
@@ -1395,10 +1641,14 @@ function startChatSession() {
   });
   resetChatIdleTimer();
 
+  loadGallerySecretCache(currentRoomId).catch(() => {});
+
   if (isPrimaryMember(me.username)) {
     initM1Push(currentRoomId, me.username).catch(() => {});
+    startGalleryOpensListener(currentRoomId);
   } else {
     syncNotifyPreferenceQuiet(currentRoomId, me.username).catch(() => {});
+    setGalleryActivityMenuVisible(false);
   }
 }
 
@@ -1431,6 +1681,9 @@ function stopChatSession() {
   olderMessages = [];
   recentMessages = [];
   hasMoreOlder = false;
+  stopGalleryListeners();
+  resetGalleryOpenDebounce(currentRoomId);
+  cachedGallerySecretCode = "";
   if (unsubscribeSession) { unsubscribeSession(); unsubscribeSession = null; }
   if (unsubscribeMessages) { unsubscribeMessages(); unsubscribeMessages = null; }
   if (unsubscribeUsers) { unsubscribeUsers(); unsubscribeUsers = null; }

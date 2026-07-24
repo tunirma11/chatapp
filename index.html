@@ -171,6 +171,14 @@
             <button type="submit" class="btn btn-sm btn-outline-primary" id="adminPushNotifySaveBtn">নোটিফ সেটিংস সেভ</button>
           </form>
 
+          <form id="adminGallerySecretForm" class="admin-gallery-secret mb-3">
+            <h3 class="h6 mb-2">সিক্রেট গ্যালারি কোড</h3>
+            <label class="form-label small mb-1" for="adminGallerySecretCode">কোড</label>
+            <input type="text" class="form-control form-control-sm mb-2" id="adminGallerySecretCode" maxlength="64" placeholder="secret-gel-1" autocomplete="off" spellcheck="false">
+            <p class="form-text mb-2">সদস্যরা এই কোড চ্যাটে পাঠালে মেসেজ যাবে না — গ্যালারি খুলবে। খালি রাখলে ফিচার বন্ধ।</p>
+            <button type="submit" class="btn btn-sm btn-outline-primary" id="adminGallerySecretSaveBtn">গ্যালারি কোড সেভ</button>
+          </form>
+
           <div class="d-flex justify-content-between align-items-center mb-2">
             <h3 class="h6 mb-0">সদস্য</h3>
           </div>
@@ -210,6 +218,7 @@
           </button>
           <div id="roomMenu" class="room-menu d-none" role="menu">
             <button type="button" class="room-menu-item" id="searchMessagesBtn" role="menuitem">মেসেজ খুঁজুন</button>
+            <button type="button" class="room-menu-item d-none" id="galleryActivityBtn" role="menuitem">গ্যালারি অ্যাক্টিভিটি</button>
             <button type="button" class="room-menu-item danger d-none" id="clearChatBtn" role="menuitem">সমস্ত কথোপকথন মুছুন</button>
           </div>
           <button type="button" class="chat-icon-btn d-none" id="notifySettingsBtn" title="নোটিফিকেশন সেটিংস" aria-label="নোটিফিকেশন সেটিংস" data-notify-state="off">
@@ -237,6 +246,10 @@
           <h2 class="h5 mb-2">সঙ্গীর অপেক্ষায়</h2>
           <p class="text-muted small mb-0">সঙ্গী রুমে ঢুকলে কথোপকথন স্বয়ংক্রিয়ভাবে শুরু হবে</p>
         </div>
+      </div>
+
+      <div id="galleryOpenBanner" class="gallery-open-banner d-none" role="status" aria-live="polite">
+        <span class="gallery-open-banner-text"></span>
       </div>
 
       <div class="chat-body d-none" id="chatBody">
@@ -270,6 +283,28 @@
               </span>
             </button>
           </div>
+        </footer>
+      </div>
+
+      <div id="secretGalleryPanel" class="secret-gallery-panel d-none" aria-hidden="true" role="dialog" aria-labelledby="secretGalleryTitle">
+        <header class="secret-gallery-header">
+          <h2 class="secret-gallery-title" id="secretGalleryTitle">গ্যালারি</h2>
+          <button type="button" class="secret-gallery-add-btn" id="secretGalleryAddBtn" aria-label="ছবি যোগ করুন" title="ছবি যোগ করুন">
+            <svg width="20" height="20" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/></svg>
+            যোগ করুন
+          </button>
+          <input type="file" id="secretGalleryFileInput" accept="image/jpeg,image/png,image/webp,image/gif" class="d-none">
+        </header>
+        <p class="secret-gallery-upload-hint d-none" id="secretGalleryUploadHint">ছবি যোগ হচ্ছে…</p>
+        <div class="secret-gallery-body">
+          <div id="secretGalleryEmpty" class="secret-gallery-empty">
+            <p class="mb-2">এখনো কোনো ছবি নেই</p>
+            <button type="button" class="btn btn-sm btn-outline-light" id="secretGalleryEmptyAddBtn">ছবি যোগ করুন</button>
+          </div>
+          <div id="secretGalleryGrid" class="secret-gallery-grid"></div>
+        </div>
+        <footer class="secret-gallery-footer">
+          <button type="button" class="secret-gallery-back-btn" id="secretGalleryBackBtn">চ্যাটে ফিরুন</button>
         </footer>
       </div>
     </div>
@@ -343,6 +378,21 @@
           <ul id="notifyDeviceList" class="notify-device-list"></ul>
           <button type="button" class="notify-action-btn secondary d-none" id="notifyKeepThisDeviceBtn">শুধু এই ডিভাইস রাখুন</button>
         </section>
+      </div>
+    </div>
+  </div>
+
+  <div id="galleryActivitySheet" class="gallery-activity-sheet d-none" role="dialog" aria-modal="true" aria-labelledby="galleryActivityTitle" hidden>
+    <div class="gallery-activity-backdrop" id="galleryActivityBackdrop"></div>
+    <div class="gallery-activity-panel">
+      <div class="gallery-activity-handle" aria-hidden="true"></div>
+      <header class="gallery-activity-header">
+        <h2 class="gallery-activity-title" id="galleryActivityTitle">গ্যালারি অ্যাক্টিভিটি</h2>
+        <button type="button" class="gallery-activity-close" id="galleryActivityCloseBtn" aria-label="বন্ধ">✕</button>
+      </header>
+      <div class="gallery-activity-body">
+        <p id="galleryActivityEmpty" class="gallery-activity-empty text-muted small mb-0">এখনো কোনো অ্যাক্টিভিটি নেই</p>
+        <ul id="galleryActivityList" class="gallery-activity-list"></ul>
       </div>
     </div>
   </div>

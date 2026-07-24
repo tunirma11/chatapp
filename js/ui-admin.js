@@ -34,7 +34,11 @@ export function renderAdminRoomList(rooms, onSelect) {
       return `
         <button type="button" class="admin-room-item" data-room-id="${escapeHtml(room.id)}">
           <div class="fw-semibold">${escapeHtml(room.label || room.id)}</div>
-          <div class="small text-muted">${escapeHtml(room.id)} · ${room.memberCount || 0}/২ সদস্য · ${statusBadge}</div>
+          <div class="small text-muted">${escapeHtml(room.id)} · ${room.memberCount || 0}/২ সদস্য · ${statusBadge}${
+            room.gallerySecretCode
+              ? ' · <span class="badge text-bg-info">গ্যালারি</span>'
+              : ""
+          }</div>
         </button>`;
     })
     .join("");
@@ -65,6 +69,11 @@ export function renderAdminRoomDetail(room, members) {
   const pushText = document.getElementById("adminPushNotifyText");
   if (pushText) {
     pushText.value = String(room.pushNotifyText || DEFAULT_PUSH_NOTIFY_TEXT);
+  }
+
+  const galleryCode = document.getElementById("adminGallerySecretCode");
+  if (galleryCode) {
+    galleryCode.value = String(room.gallerySecretCode || "");
   }
 
   const list = document.getElementById("adminMemberList");

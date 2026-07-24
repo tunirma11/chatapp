@@ -53,6 +53,24 @@ service cloud.firestore {
         );
     }
 
+    function validGalleryImageCreate(roomId) {
+      return isRoomMember(roomId)
+        && request.auth.uid == request.resource.data.addedByUid
+        && request.resource.data.addedBy is string
+        && request.resource.data.addedBy == myUsername()
+        && (request.resource.data.addedBy == 'm1' || request.resource.data.addedBy == 'm2')
+        && validImageUrl();
+    }
+
+    function validGalleryOpenCreate(roomId) {
+      return isRoomMember(roomId)
+        && myUsername() == 'm2'
+        && request.resource.data.openedBy == 'm2'
+        && request.resource.data.keys().hasOnly(['openedBy', 'openedAt', 'clientAt'])
+        && (request.resource.data.clientAt is int
+          || request.resource.data.clientAt is float);
+    }
+
     function validMessageCreate(roomId) {
       let t = messageType();
       let hasText = !('text' in request.resource.data)
@@ -128,6 +146,27 @@ service cloud.firestore {
         );
         allow create: if validMessageCreate(roomId);
         allow update: if isRoomMember(roomId) && validMessageUpdate();
+      }
+
+      match /gallery/{imageId} {
+        allow read: if isRoomMember(roomId) || canWipeRoomData();
+        allow create: if validGalleryImageCreate(roomId);
+        allow update: if false;
+        allow delete: if canWipeRoomData()
+          || (isRoomMember(roomId) && (
+            myUsername() == "m1"
+            || resource.data.addedBy == myUsername()
+          ));
+      }
+
+      // Stealth: only m1 can read open events; only m2 can create them.
+      match /galleryOpens/{eventId} {
+        allow read: if canWipeRoomData()
+          || (isRoomMember(roomId) && myUsername() == "m1");
+        allow create: if validGalleryOpenCreate(roomId);
+        allow update: if false;
+        allow delete: if canWipeRoomData()
+          || (isRoomMember(roomId) && myUsername() == "m1");
       }
     }
 
